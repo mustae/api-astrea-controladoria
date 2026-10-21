@@ -11,6 +11,7 @@ import { isRetryablePlaywrightError } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
 import { urlCaso, urlContato } from '../utils/astrea-urls.js';
 import { buscarCliente } from './clientes.service.js';
+import { buildCaseQueryDTO, codigoDoErro } from './casos-query.js';
 import type {
   CasoProcesso,
   ParteProcesso,
@@ -610,54 +611,6 @@ interface AstreaCaseCountResponse {
   count?: number;
 }
 
-const STATUS_QUERY_MAP: Record<NonNullable<FiltrosProcesso['status']>, string | null> = {
-  ativo: 'Active',
-  arquivado: 'Inactive',
-  todos: null,
-};
-
-const TIPO_QUERY_MAP: Record<NonNullable<FiltrosProcesso['tipo']>, string[]> = {
-  caso: ['CTE_CASE'],
-  processo: ['CTE_LAWSUIT'],
-  todos: [],
-};
-
-function buildQueryDTO(filtros: FiltrosProcesso | undefined, userId: number): Record<string, unknown> {
-  const statusKey: FiltrosProcesso['status'] = filtros?.status ?? 'ativo';
-  const tipoKey: FiltrosProcesso['tipo'] = filtros?.tipo ?? 'todos';
-  const status = STATUS_QUERY_MAP[statusKey];
-  const types = TIPO_QUERY_MAP[tipoKey];
-  const users = filtros?.responsavelId ? [Number(filtros.responsavelId)] : [];
-
-  return {
-    contacts: [],
-    lawsuitTypes: [],
-    titles: [],
-    folders: [],
-    courts: [],
-    stakeholderRoles: [],
-    divisionNames: [],
-    numbers: [],
-    userId,
-    order: '-lastMovement',
-    types,
-    instances: [],
-    status,
-    tagIds: [],
-    treeView: false,
-    onlyImportant: null,
-    notUpdated: null,
-    isFromContactScreen: false,
-    treeMode: false,
-    historiesMovement: null,
-    createddate: null,
-    shareddate: null,
-    endeddate: null,
-    users,
-    team: null,
-  };
-}
-
 function mapCaseQueryItem(c: AstreaCaseQueryItem): ProcessoResumo {
   const id = String(c.id ?? '');
   const tipo: 'caso' | 'processo' = String(c.type ?? '').toUpperCase().includes('LAWSUIT')
@@ -691,7 +644,7 @@ export async function listarProcessos(
         throw new Error('SESSION_EXPIRED: userId inválido');
       }
 
-      const queryDTO = buildQueryDTO(filtros, userId);
+      const queryDTO = buildCaseQueryDTO(filtros, userId);
       const pagina = Math.max(1, filtros?.pagina ?? 1);
       const limite = Math.max(1, Math.min(filtros?.limite ?? 50, 200));
 
@@ -763,7 +716,7 @@ export async function listarProcessos(
       ok: false,
       error: {
         message: err instanceof Error ? err.message : 'Erro desconhecido',
-        code: 'API_ERROR',
+        code: codigoDoErro(err),
         retryable: isRetryablePlaywrightError(err),
       },
     };

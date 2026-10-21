@@ -88,6 +88,10 @@ export interface FiltrosProcesso {
   status?: 'ativo' | 'arquivado' | 'todos';
   /** ID do responsável (compara contra `responsible.id` ou `responsibleId`). */
   responsavelId?: string;
+  /** IDs de etiquetas (tags) do Astrea → `queryDTO.tagIds`. Use `listar_etiquetas` para descobrir. */
+  etiquetasIds?: string[];
+  /** IDs de contatos/clientes → `queryDTO.contacts`. */
+  clienteIds?: string[];
   pagina?: number;
   limite?: number;
 }

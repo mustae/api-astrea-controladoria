@@ -49,8 +49,11 @@ import {
   calcularDisponibilidade,
   cancelarEventoAgenda,
   criarEventoAgenda,
+  excluirEventoAgenda,
   remarcarEventoAgenda,
 } from '../services/agenda-eventos.service.js';
+import { listarEtiquetas } from '../services/etiquetas.service.js';
+import { contarProcessos, processosPorCliente } from '../services/processos-estatisticas.service.js';
 import type { ServiceResponse } from '../types/index.js';
 
 /** Resposta MCP padrão para um ServiceResponse (erro → isError com código). */
@@ -284,6 +287,8 @@ export function createMcpServer(): McpServer {
       tipo: z.enum(['caso', 'processo', 'todos']).optional(),
       status: z.enum(['ativo', 'arquivado', 'todos']).optional(),
       responsavelId: z.string().optional(),
+      etiquetasIds: z.array(z.string()).optional().describe('Filtra por etiquetas (ids de `listar_etiquetas`).'),
+      clienteIds: z.array(z.string()).optional().describe('Filtra por clientes/contatos (ids).'),
       pagina: z.number().int().positive().optional(),
       limite: z.number().int().min(1).max(200).optional(),
     },
@@ -298,6 +303,46 @@ export function createMcpServer(): McpServer {
       const output = result.meta ? { data: result.data, meta: result.meta } : result.data;
       return { content: [{ type: 'text', text: JSON.stringify(output, null, 2) }] };
     },
+  );
+
+  server.tool(
+    'listar_etiquetas',
+    'Lista as etiquetas (tags) do escritório no Astrea: `id`, `nome`, `cor`, `ativa` e `restricoes` (CASES/TASKS/APPOINTMENTS — vazio = usável em qualquer lugar). Use para descobrir ids antes de filtrar processos por etiqueta (`listar_processos`, `contar_processos`). Por padrão só ativas; `uso` filtra por onde a etiqueta pode ser aplicada; `busca` filtra pelo nome (sem acento). Cache 5 min.',
+    {
+      busca: z.string().optional(),
+      incluirInativas: z.boolean().optional(),
+      uso: z.enum(['processos', 'tarefas', 'compromissos']).optional(),
+    },
+    async (input) => mcpResultado(await listarEtiquetas(input)),
+  );
+
+  server.tool(
+    'contar_processos',
+    'Conta processos/casos do Astrea para os filtros (uma única chamada, sem listar). Ex.: "quantos processos ativos tenho com a etiqueta X?", "quantos casos arquivados do responsável Y?". Retorna `{ total }`.',
+    {
+      tipo: z.enum(['caso', 'processo', 'todos']).optional().describe('Default `todos`.'),
+      status: z.enum(['ativo', 'arquivado', 'todos']).optional().describe('Default `ativo`.'),
+      responsavelId: z.string().optional(),
+      etiquetasIds: z.array(z.string()).optional().describe('Ids de `listar_etiquetas`.'),
+      clienteIds: z.array(z.string()).optional(),
+    },
+    async (input) => mcpResultado(await contarProcessos(input)),
+  );
+
+  server.tool(
+    'processos_por_cliente',
+    'Ranking de clientes por quantidade de processos/casos ("quantos processos cada cliente tem comigo?"). Varre a carteira paginando (100 por chamada ao Astrea) e agrupa pelo cliente principal. Retorna `totalProcessos`, `totalClientes`, `semCliente` (processos sem cliente vinculado), `truncado` e `clientes[]` (`clienteId`, `clienteNome`, `quantidade`) ordenados do maior para o menor. Aceita os mesmos filtros de `contar_processos`. Para carteiras grandes pode levar dezenas de segundos.',
+    {
+      tipo: z.enum(['caso', 'processo', 'todos']).optional().describe('Default `todos`.'),
+      status: z.enum(['ativo', 'arquivado', 'todos']).optional().describe('Default `ativo`.'),
+      responsavelId: z.string().optional(),
+      etiquetasIds: z.array(z.string()).optional().describe('Ids de `listar_etiquetas`.'),
+      clienteIds: z.array(z.string()).optional(),
+      topN: z.number().int().min(1).max(500).optional().describe('Quantos clientes devolver (default 20).'),
+      maxProcessos: z.number().int().min(100).max(20000).optional().describe('Teto de processos varridos (default 5000).'),
+    },
+    async ({ topN, maxProcessos, ...filtros }) =>
+      mcpResultado(await processosPorCliente(filtros, { topN, maxProcessos })),
   );
 
   server.tool(
@@ -913,6 +958,13 @@ export function createMcpServer(): McpServer {
     'Cancela um compromisso da agenda do Astrea (status CANCELADO — mantém o histórico; não exclui).',
     { id: z.string(), motivo: z.string().optional() },
     async ({ id, motivo }) => mcpResultado(await cancelarEventoAgenda(id, motivo, { forcar: true })),
+  );
+
+  server.tool(
+    'excluir_evento_agenda',
+    'EXCLUI definitivamente um compromisso da agenda do Astrea (some do histórico). Prefira `cancelar_evento_agenda` quando quiser manter registro; use esta para remover um compromisso cadastrado errado. Irreversível.',
+    { id: z.string() },
+    async ({ id }) => mcpResultado(await excluirEventoAgenda(id, { forcar: true })),
   );
 
   server.tool('listar_usuarios', 'Lista usuários/advogados do escritório.', {}, async () => {

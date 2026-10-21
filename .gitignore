@@ -47,3 +47,6 @@ test/**/*.d.ts.map
 test/**/*.js
 test/**/*.js.map
 !test/**/*.test.ts
+
+# Saída dos scripts de discovery (contém dados reais de clientes)
+scripts/discovery-output/

@@ -14,6 +14,10 @@ API REST que expõe dados do sistema jurídico [Astrea](https://astrea.net.br) v
 | `GET`   | `/api/clientes/:id`                             | Detalhes do cliente (inclui documentos)                |
 | `PATCH` | `/api/clientes/:id`                             | Atualiza parcialmente o cadastro (campos não passados ficam intactos) |
 | `GET`   | `/api/clientes/:id/casos`                       | Casos/processos do cliente                             |
+| `GET`   | `/api/casos/processos`                          | Lista resumida de processos/casos (filtros: `tipo`, `status`, `responsavelId`, `etiquetasIds`, `clienteIds`) |
+| `GET`   | `/api/casos/processos/contagem`                 | Total de processos para os mesmos filtros (1 chamada)  |
+| `GET`   | `/api/casos/processos/por-cliente`              | Ranking de clientes por nº de processos (`topN`, `maxProcessos`) |
+| `GET`   | `/api/etiquetas`                                | Etiquetas do escritório (`busca`, `incluirInativas`, `uso=processos\|tarefas\|compromissos`) |
 | `GET`   | `/api/casos/:id`                                | Detalhes completos de um caso/processo                 |
 | `GET`   | `/api/casos/:id/andamentos`                     | Andamentos do caso                                     |
 | `POST`  | `/api/atendimentos`                             | Agenda um atendimento                                  |
@@ -112,7 +116,13 @@ As operações de mutação novas também ficam disponíveis no MCP remoto/stdio
 - `atualizar_cliente` — PATCH parcial no cadastro do contato (corrigir typo no nome, atualizar telefone/email/endereço/etc.). Campos não informados ficam intactos. Não permite alterar perfil/tipo (cliente↔contato, PF↔PJ) — para isso, use a UI do Astrea.
 - `transformar_atendimento_em_caso`
 - `transformar_atendimento_em_processo`
+- `listar_etiquetas` — etiquetas (id, nome, cor, ativa, restrições CASES/TASKS/APPOINTMENTS); cache 5 min
+- `contar_processos` — total de processos/casos para os filtros (inclui `etiquetasIds`/`clienteIds`)
+- `processos_por_cliente` — ranking de clientes por quantidade de processos
+- `excluir_evento_agenda` — exclusão definitiva de compromisso (o `cancelar_evento_agenda` mantém histórico)
 - `comentar_tarefa` — adiciona comentário em tarefa (texto puro; não aceita menção `@usuário` nem anexos nesta versão)
+
+A tool `listar_processos` aceita `etiquetasIds` e `clienteIds`. Roadmap de paridade com o mcp.ai: [docs/paridade-mcp-ai.md](docs/paridade-mcp-ai.md).
 
 As tools de listagem `listar_clientes` e `listar_todos_clientes` também aceitam os filtros nativos do `queryDTO` documentados acima (`mesAniversario`, `estado`, `etiquetasIds`, `apenasComEmail`, `buscarEmEmpresa`).
 

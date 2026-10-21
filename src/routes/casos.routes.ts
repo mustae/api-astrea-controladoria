@@ -8,6 +8,8 @@ import {
   listarProcessos,
 } from '../services/casos.service.js';
 import { listarAndamentos } from '../services/andamentos.service.js';
+import { contarProcessos, processosPorCliente } from '../services/processos-estatisticas.service.js';
+import { httpStatusDoCodigo, idsStringArraySchema } from './query-helpers.js';
 import type { ApiResponse, ApiError } from '../types/index.js';
 import type { CasoProcesso } from '../models/caso-processo.js';
 
@@ -60,8 +62,70 @@ const processosQuerySchema = z.object({
   tipo: z.enum(['caso', 'processo', 'todos']).optional(),
   status: z.enum(['ativo', 'arquivado', 'todos']).optional(),
   responsavelId: z.string().optional(),
+  etiquetasIds: idsStringArraySchema,
+  clienteIds: idsStringArraySchema,
   pagina: z.coerce.number().int().positive().default(1),
   limite: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+const filtrosEstatisticaSchema = processosQuerySchema.omit({ pagina: true, limite: true });
+
+const porClienteSchema = filtrosEstatisticaSchema.extend({
+  topN: z.coerce.number().int().min(1).max(500).optional(),
+  maxProcessos: z.coerce.number().int().min(100).max(20000).optional(),
+});
+
+function erroValidacao(res: Response, err: z.ZodError): void {
+  const error: ApiError = {
+    success: false,
+    error: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+    code: 'VALIDATION_ERROR',
+  };
+  res.status(400).json(error);
+}
+
+/** Remove chaves undefined (o service recebe só o que foi informado). */
+function compacto<T extends Record<string, unknown>>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+/** GET /api/casos/processos/contagem — total de processos/casos para os filtros (1 chamada). */
+router.get('/processos/contagem', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = filtrosEstatisticaSchema.safeParse(req.query);
+    if (!parsed.success) return erroValidacao(res, parsed.error);
+
+    const result = await contarProcessos(compacto(parsed.data));
+    if (!result.ok) {
+      const error: ApiError = { success: false, error: result.error.message, code: result.error.code };
+      res.status(httpStatusDoCodigo(result.error.code)).json(error);
+      return;
+    }
+    const response: ApiResponse<typeof result.data> = { success: true, data: result.data };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/casos/processos/por-cliente — ranking de clientes por quantidade de processos. */
+router.get('/processos/por-cliente', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = porClienteSchema.safeParse(req.query);
+    if (!parsed.success) return erroValidacao(res, parsed.error);
+
+    const { topN, maxProcessos, ...filtros } = parsed.data;
+    const result = await processosPorCliente(compacto(filtros), compacto({ topN, maxProcessos }));
+    if (!result.ok) {
+      const error: ApiError = { success: false, error: result.error.message, code: result.error.code };
+      res.status(httpStatusDoCodigo(result.error.code)).json(error);
+      return;
+    }
+    const response: ApiResponse<typeof result.data> = { success: true, data: result.data };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
 });
 
 /** GET /api/casos/processos — enumera casos/processos do escritório (resumo) */
@@ -76,7 +140,7 @@ router.get('/processos', async (req: Request, res: Response, next: NextFunction)
         error: result.error.message,
         code: result.error.code,
       };
-      res.status(result.error.code === 'BROWSER_UNAVAILABLE' ? 503 : 500).json(error);
+      res.status(httpStatusDoCodigo(result.error.code)).json(error);
       return;
     }
 
