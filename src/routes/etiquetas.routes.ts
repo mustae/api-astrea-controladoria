@@ -9,7 +9,7 @@ const router = Router();
 const querySchema = z.object({
   busca: z.string().optional(),
   incluirInativas: booleanQuerySchema,
-  uso: z.enum(['processos', 'tarefas', 'compromissos']).optional(),
+  uso: z.enum(['processos', 'tarefas', 'compromissos', 'prazos', 'audiencias', 'andamentos']).optional(),
 });
 
 /** GET /api/etiquetas — etiquetas (tags) do escritório. Cache 5 min. */

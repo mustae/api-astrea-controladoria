@@ -142,3 +142,23 @@ describe('extrairIdAppointment', () => {
     expect(extrairIdAppointment({ response: 'NOT_OK' })).toBeNull();
   });
 });
+
+describe('montarPayloadAppointment — etiquetas (capturado 21/10/2026)', () => {
+  it('envia as etiquetas como objetos em `tags` (tagIds fica vazio, como na UI)', () => {
+    const tag = { id: '5508862302945280', label: '+CONTROLADORIA', color: '#000000', active: true };
+    const p = montarPayloadAppointment(
+      { titulo: 'a', data: '2026-10-21', horaInicio: '16:00', responsavelId: LETICIA },
+      { userId: AUTOMACAO, tags: [tag] },
+    );
+    expect(p.tags).toEqual([tag]);
+    expect(p.tagIds).toEqual([]);
+  });
+
+  it('sem etiquetas → tags vazio', () => {
+    const p = montarPayloadAppointment(
+      { titulo: 'a', data: '2026-10-21', horaInicio: '16:00', responsavelId: LETICIA },
+      { userId: AUTOMACAO },
+    );
+    expect(p.tags).toEqual([]);
+  });
+});

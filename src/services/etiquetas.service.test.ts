@@ -105,3 +105,32 @@ describe('listarEtiquetas', () => {
     expect(r.ok && r.data).toEqual([]);
   });
 });
+
+describe('carregarEtiquetasBrutas', () => {
+  it('devolve objetos completos na ordem pedida', async () => {
+    const { carregarEtiquetasBrutas } = await import('./etiquetas.service.js');
+    mockGet.mockResolvedValueOnce({
+      items: [
+        { id: '1', label: 'A', color: '#111', active: true, restrictions: ['APPOINTMENTS'] },
+        { id: '2', label: 'B' },
+      ],
+    });
+    const r = await carregarEtiquetasBrutas({} as never, ['2', '1']);
+    expect(r).toEqual([
+      { id: '2', label: 'B', color: '#000000', active: true, hasRestrictions: false, restrictions: [], tagType: 'MANUAL' },
+      { id: '1', label: 'A', color: '#111', active: true, hasRestrictions: true, restrictions: ['APPOINTMENTS'], tagType: 'MANUAL' },
+    ]);
+  });
+
+  it('id inexistente → VALIDATION_ERROR', async () => {
+    const { carregarEtiquetasBrutas } = await import('./etiquetas.service.js');
+    mockGet.mockResolvedValueOnce({ items: [] });
+    await expect(carregarEtiquetasBrutas({} as never, ['9'])).rejects.toThrow(/VALIDATION_ERROR/);
+  });
+
+  it('lista vazia não chama o Astrea', async () => {
+    const { carregarEtiquetasBrutas } = await import('./etiquetas.service.js');
+    expect(await carregarEtiquetasBrutas({} as never, [])).toEqual([]);
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+});

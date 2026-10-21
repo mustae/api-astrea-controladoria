@@ -11,6 +11,7 @@
 // como "dicionário" antes de filtrar processos.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { Page } from 'playwright';
 import { ANGULAR_PAGE_PATH, astreaApiGet, withBrowserContext } from '../browser/astrea-http.js';
 import { navigateTo } from '../browser/navigator.js';
 import { InflightTtlCache } from '../utils/cache.js';
@@ -47,13 +48,16 @@ export interface OpcoesListarEtiquetas {
   /** Filtro textual (sem acento, sem caixa) sobre o nome. */
   busca?: string;
   /** Mantém só etiquetas usáveis nesse contexto (ou sem restrição). */
-  uso?: 'processos' | 'tarefas' | 'compromissos';
+  uso?: 'processos' | 'tarefas' | 'compromissos' | 'prazos' | 'audiencias' | 'andamentos';
 }
 
 const USO_PARA_RESTRICAO: Record<NonNullable<OpcoesListarEtiquetas['uso']>, string> = {
   processos: 'CASES',
   tarefas: 'TASKS',
   compromissos: 'APPOINTMENTS',
+  prazos: 'DEADLINE',
+  audiencias: 'HEARING',
+  andamentos: 'HISTORIES',
 };
 
 const CACHE_TTL_MS = 5 * 60_000;
@@ -121,4 +125,32 @@ export async function listarEtiquetas(
       },
     };
   }
+}
+
+/**
+ * Objetos de etiqueta no formato que o formulário de COMPROMISSO envia em `tags`
+ * (capturado em 21/10/2026: o appointment usa `tags: [objeto]`, não `tagIds`).
+ * Lança VALIDATION_ERROR se algum id não existir.
+ */
+export async function carregarEtiquetasBrutas(
+  page: Page,
+  ids: readonly string[],
+): Promise<Array<Record<string, unknown>>> {
+  if (!ids.length) return [];
+  const res = await astreaApiGet<AstreaTagsResponse>(page, '/tags/get-all-tags');
+  const porId = new Map((res?.items ?? []).map((t) => [String(t.id), t]));
+  const faltando = ids.filter((id) => !porId.has(String(id)));
+  if (faltando.length) throw new Error(`VALIDATION_ERROR: etiqueta(s) inexistente(s): ${faltando.join(', ')}`);
+  return ids.map((id) => {
+    const t = porId.get(String(id))!;
+    return {
+      id: String(t.id),
+      label: t.label ?? '',
+      color: t.color ?? '#000000',
+      active: t.active !== false,
+      hasRestrictions: Array.isArray(t.restrictions) && t.restrictions.length > 0,
+      restrictions: t.restrictions ?? [],
+      tagType: 'MANUAL',
+    };
+  });
 }

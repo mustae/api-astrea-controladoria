@@ -16,6 +16,7 @@ vi.mock('../services/casos.service.js', () => ({
 vi.mock('../services/andamentos.service.js', () => ({ listarAndamentos: vi.fn() }));
 vi.mock('../services/processos-estatisticas.service.js', () => ({
   contarProcessos: vi.fn(),
+  processosNovosPorMes: vi.fn(),
   processosPorCliente: vi.fn(),
 }));
 
@@ -23,7 +24,7 @@ import etiquetasRoutes from './etiquetas.routes.js';
 import casosRoutes from './casos.routes.js';
 import { listarEtiquetas } from '../services/etiquetas.service.js';
 import { listarProcessos } from '../services/casos.service.js';
-import { contarProcessos, processosPorCliente } from '../services/processos-estatisticas.service.js';
+import { contarProcessos, processosNovosPorMes, processosPorCliente } from '../services/processos-estatisticas.service.js';
 
 const app = buildApp((a) => {
   a.use('/api/etiquetas', etiquetasRoutes);
@@ -99,5 +100,19 @@ describe('GET /api/casos/processos (filtro de etiquetas)', () => {
     expect(listarProcessos).toHaveBeenCalledWith(
       expect.objectContaining({ etiquetasIds: ['9', '8'], clienteIds: ['5'] }),
     );
+  });
+});
+
+describe('GET /api/casos/processos/novos-por-mes', () => {
+  it('repassa meses/ate e filtros', async () => {
+    vi.mocked(processosNovosPorMes).mockResolvedValueOnce({ ok: true, data: { total: 1, meses: [{ mes: '2026-10', total: 1 }] } });
+    const r = await request(app).get('/api/casos/processos/novos-por-mes?meses=3&ate=2026-10&tipo=processo');
+    expect(r.status).toBe(200);
+    expect(processosNovosPorMes).toHaveBeenCalledWith({ tipo: 'processo' }, { meses: 3, ate: '2026-10' });
+  });
+
+  it('ate inválido → 400', async () => {
+    const r = await request(app).get('/api/casos/processos/novos-por-mes?ate=2026-13');
+    expect(r.status).toBe(400);
   });
 });

@@ -46,6 +46,7 @@ import {
   listarAtendimentosDoContatoNaPagina,
 } from './atendimentos.service.js';
 import { listarUsuarios } from './usuarios.service.js';
+import { carregarEtiquetasBrutas } from './etiquetas.service.js';
 import { InflightTtlCache, type InflightCacheStats } from '../utils/cache.js';
 import { isRetryablePlaywrightError } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
@@ -308,6 +309,7 @@ interface CriacaoNormalizada {
   contato?: ContatoEventoInput;
   criarAtendimento: boolean;
   verificarConflito: boolean;
+  etiquetasIds: string[];
 }
 
 function horaParaMin(h: string): number {
@@ -342,6 +344,8 @@ function validarCriacao(input: CriarEventoAgendaInput): string | null {
   if ((input.comentarios ?? '').length > 2000) return 'comentarios: máximo 2000 caracteres';
   if (input.contato && !input.contato.nome?.trim()) return 'contato.nome é obrigatório';
   if (input.casoId !== undefined && !RE_ID_ASTREA.test(String(input.casoId))) return 'casoId: ID inválido do Astrea';
+  const etiquetaInvalida = (input.etiquetasIds ?? []).find((id) => !RE_ID_ASTREA.test(String(id)));
+  if (etiquetaInvalida !== undefined) return `etiquetasIds: ID inválido "${etiquetaInvalida}"`;
   return null;
 }
 
@@ -374,6 +378,7 @@ function normalizarCriacao(input: CriarEventoAgendaInput): CriacaoNormalizada {
     contato,
     criarAtendimento: contato ? input.criarAtendimento !== false : false,
     verificarConflito: input.verificarConflito !== false,
+    etiquetasIds: [...new Set((input.etiquetasIds ?? []).map(String))],
   };
 }
 
@@ -580,6 +585,9 @@ async function criarEventoNormalizado(n: CriacaoNormalizada): Promise<ServiceRes
         }
       }
 
+      // Etiquetas: resolvidas ANTES de qualquer escrita (id inexistente → VALIDATION_ERROR).
+      const tags = await carregarEtiquetasBrutas(page, n.etiquetasIds);
+
       if (n.verificarConflito) {
         const conflitos = conflitosNoHorario(eventosDia, n.responsavelId, n.data, n.horaInicio, n.horaFim);
         if (conflitos.length > 0) throw new ConflitoAgendaError(conflitos);
@@ -606,7 +614,7 @@ async function criarEventoNormalizado(n: CriacaoNormalizada): Promise<ServiceRes
       const salvar = async (caseId: string | null): Promise<string> => {
         const payload = montarPayloadAppointment(
           { ...n, horaInicio: n.horaInicio, horaFim: n.horaFim, envolvidosIds: n.envolvidosIds },
-          { userId, caseId, nomes },
+          { userId, caseId, nomes, tags },
         );
         estado.tentouCriar = true;
         try {

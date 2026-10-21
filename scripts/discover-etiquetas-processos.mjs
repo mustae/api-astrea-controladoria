@@ -10,6 +10,7 @@
 // Credenciais: coloque DISC_EMAIL e DISC_PASS no arquivo .env (recomendado) e rode só:
 //   node scripts/discover-etiquetas-processos.mjs                  (todas as 11 etapas)
 //   node scripts/discover-etiquetas-processos.mjs --so=etiqueta    (só etiquetas)
+//   node scripts/discover-etiquetas-processos.mjs --so=r2-         (rodada 2: prazos, audiências, etiquetas em tarefa/compromisso)
 // Ou defina no terminal (PowerShell, na raiz do projeto):
 //   $env:DISC_EMAIL='usuario@escritorio'; $env:DISC_PASS='senha'; node scripts/discover-etiquetas-processos.mjs
 // Uso (bash):
@@ -87,6 +88,55 @@ const ETAPAS = [
     id: 'filtro-data-cadastro',
     instrucao:
       'Na LISTA de "Processos e casos", aplique o filtro por DATA DE CADASTRO/CRIAÇÃO (ex.: este mês). Serve para "processos novos por mês".',
+  },
+  // ── Rodada 2 (prazos, audiências e etiquetas em tarefa/compromisso) ──────
+  //    node scripts/discover-etiquetas-processos.mjs --so=r2-
+  {
+    id: 'r2-tarefa-com-etiqueta',
+    instrucao: 'No processo de teste, crie uma TAREFA e, no formulário, ADICIONE UMA ETIQUETA antes de salvar.',
+  },
+  {
+    id: 'r2-tarefa-editar-etiqueta',
+    instrucao: 'Abra essa tarefa, troque/remova a etiqueta e salve. Depois EXCLUA a tarefa.',
+  },
+  {
+    id: 'r2-prazo-criar',
+    instrucao:
+      'No processo de teste, crie um PRAZO (data fatal, responsável) COM UMA ETIQUETA. Se o prazo for criado pela tela de tarefa (opção "é prazo"), use esse caminho.',
+  },
+  {
+    id: 'r2-prazo-editar',
+    instrucao: 'Abra esse prazo, mude a data e salve.',
+  },
+  {
+    id: 'r2-prazo-concluir',
+    instrucao: 'Marque esse prazo como CONCLUÍDO (cumprido). Depois desmarque.',
+  },
+  {
+    id: 'r2-prazo-excluir',
+    instrucao: 'Exclua esse prazo.',
+  },
+  {
+    id: 'r2-audiencia-criar',
+    instrucao:
+      'No processo de teste, crie uma AUDIÊNCIA (data, hora, tipo, local/fórum, sala, responsável) COM UMA ETIQUETA.',
+  },
+  {
+    id: 'r2-audiencia-editar',
+    instrucao: 'Abra essa audiência, mude o horário e salve.',
+  },
+  {
+    id: 'r2-audiencia-excluir',
+    instrucao: 'Exclua essa audiência.',
+  },
+  {
+    id: 'r2-compromisso-com-etiqueta',
+    instrucao: 'Na Agenda, crie um COMPROMISSO/EVENTO vinculado ao processo de teste COM UMA ETIQUETA. Depois exclua.',
+  },
+  {
+    id: 'r2-filtro-data-personalizado',
+    instrucao:
+      'Na LISTA de "Processos e casos", filtre por DATA DE CADASTRO com PERÍODO PERSONALIZADO (ex.: 01/01/2026 a 31/03/2026).',
   },
 ];
 

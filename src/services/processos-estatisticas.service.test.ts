@@ -11,7 +11,7 @@ vi.mock('../browser/navigator.js', () => ({
   navigateTo: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { contarProcessos, processosPorCliente } from './processos-estatisticas.service.js';
+import { contarProcessos, processosNovosPorMes, processosPorCliente } from './processos-estatisticas.service.js';
 import { astreaApiPost } from '../browser/astrea-http.js';
 
 const mockPost = vi.mocked(astreaApiPost);
@@ -104,5 +104,42 @@ describe('processosPorCliente', () => {
     mockPost.mockRejectedValueOnce(new Error('API_ERROR_500: falhou'));
     const r = await processosPorCliente();
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('processosNovosPorMes', () => {
+  it('1 count por mês com fromDate/toDate (meia-noite de Brasília), status todos por padrão', async () => {
+    mockPost.mockResolvedValueOnce({ count: 3 }).mockResolvedValueOnce({ count: 7 });
+    const r = await processosNovosPorMes({}, { meses: 2, ate: '2026-10' });
+
+    expect(mockPost).toHaveBeenCalledTimes(2);
+    const dto1 = (mockPost.mock.calls[0][2] as { queryDTO: Record<string, unknown> }).queryDTO;
+    expect(mockPost.mock.calls[0][1]).toBe('/case-list/count');
+    expect(dto1).toMatchObject({
+      createddate: null,
+      fromDate: '2026-09-01T03:00:00.000Z',
+      toDate: '2026-09-30T03:00:00.000Z',
+      status: null,
+    });
+    const dto2 = (mockPost.mock.calls[1][2] as { queryDTO: Record<string, unknown> }).queryDTO;
+    expect(dto2).toMatchObject({ fromDate: '2026-10-01T03:00:00.000Z', toDate: '2026-10-31T03:00:00.000Z' });
+    expect(r).toEqual({
+      ok: true,
+      data: { total: 10, meses: [{ mes: '2026-09', total: 3 }, { mes: '2026-10', total: 7 }] },
+    });
+  });
+
+  it('virada de ano e fevereiro', async () => {
+    mockPost.mockResolvedValue({ count: 0 });
+    await processosNovosPorMes({ status: 'ativo' }, { meses: 2, ate: '2028-02' });
+    const d = mockPost.mock.calls.map((c) => (c[2] as { queryDTO: Record<string, unknown> }).queryDTO);
+    expect(d[0]).toMatchObject({ fromDate: '2028-01-01T03:00:00.000Z', toDate: '2028-01-31T03:00:00.000Z', status: 'Active' });
+    expect(d[1]).toMatchObject({ fromDate: '2028-02-01T03:00:00.000Z', toDate: '2028-02-29T03:00:00.000Z' });
+  });
+
+  it('meses fora de 1..36 ou ate inválido → VALIDATION_ERROR', async () => {
+    expect((await processosNovosPorMes({}, { meses: 0 })).ok).toBe(false);
+    expect((await processosNovosPorMes({}, { ate: '2026-13' })).ok).toBe(false);
+    expect(mockPost).not.toHaveBeenCalled();
   });
 });

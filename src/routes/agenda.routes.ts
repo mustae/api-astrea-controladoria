@@ -127,6 +127,7 @@ const criarEventoSchema = z
       .optional(),
     criarAtendimento: z.boolean().optional(),
     verificarConflito: z.boolean().optional(),
+    etiquetasIds: z.array(idAstrea).max(20).optional(),
   })
   .strict()
   .refine((b) => b.diaTodo === true || !!b.horaInicio, {

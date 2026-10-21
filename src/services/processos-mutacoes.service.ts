@@ -157,6 +157,41 @@ export async function etiquetarProcessos(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Etiquetas em TAREFA
+//   remover: GET /_ah/api/workspace/v1/removeTagFromTask?taskId&tagId&userId (capturado 21/10/2026)
+//   aplicar: GET /_ah/api/workspace/v1/addTagToTask?taskId&tagId&userId (simétrico ao de
+//            processos; validar ao vivo — na criação use `etiquetasIds` em criar_tarefa)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface EtiquetarTarefaInput {
+  tarefaId: string;
+  etiquetasIds: string[];
+  acao: 'aplicar' | 'remover';
+}
+
+export async function etiquetarTarefa(
+  input: EtiquetarTarefaInput,
+): Promise<ServiceResponse<{ tarefaId: string; acao: EtiquetarTarefaInput['acao']; etiquetasIds: string[] }>> {
+  try {
+    const tarefaId = idUnico(input.tarefaId, 'tarefaId');
+    const etiquetas = idsValidos(input.etiquetasIds, 'etiquetaId', MAX_ETIQUETAS_LOTE);
+    const metodo = input.acao === 'remover' ? 'removeTagFromTask' : 'addTagToTask';
+    await withBrowserContext(async (page) => {
+      const userId = await abrir(page);
+      for (const tagId of etiquetas) {
+        await astreaGapiGet(
+          page,
+          `/workspace/v1/${metodo}?taskId=${tarefaId}&tagId=${tagId}&userId=${encodeURIComponent(userId)}`,
+        );
+      }
+    });
+    return { ok: true, data: { tarefaId, acao: input.acao, etiquetasIds: etiquetas } };
+  } catch (err) {
+    return classificar(err, 'etiquetarTarefa');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Editar processo (read-modify-write)
 // ─────────────────────────────────────────────────────────────────────────────
 

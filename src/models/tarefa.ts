@@ -33,6 +33,8 @@ export interface CriarTarefaInput {
   prazo?: string;
   /** Prioridade numerica: 0=normal, 1=baixa, 2=alta. */
   prioridade?: number;
+  /** IDs de etiquetas (`listar_etiquetas`, uso "tarefas") → `taskInfoDTO.tagIds`. */
+  etiquetasIds?: string[];
 }
 
 export interface AtualizarTarefaInput {

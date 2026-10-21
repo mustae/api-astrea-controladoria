@@ -60,9 +60,25 @@ import {
   etiquetarProcessos,
   excluirAndamento,
   excluirTarefa,
+  etiquetarTarefa,
   reativarProcesso,
 } from '../services/processos-mutacoes.service.js';
-import { contarProcessos, processosPorCliente } from '../services/processos-estatisticas.service.js';
+import {
+  alterarStatusPrazo,
+  buscarAudiencia,
+  buscarPrazo,
+  criarAudiencia,
+  criarPrazo,
+  editarAudiencia,
+  editarPrazo,
+  excluirAudiencia,
+  excluirPrazo,
+} from '../services/prazos-audiencias.service.js';
+import {
+  contarProcessos,
+  processosNovosPorMes,
+  processosPorCliente,
+} from '../services/processos-estatisticas.service.js';
 import type { ServiceResponse } from '../types/index.js';
 
 /** Resposta MCP padrão para um ServiceResponse (erro → isError com código). */
@@ -316,11 +332,11 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'listar_etiquetas',
-    'Lista as etiquetas (tags) do escritório no Astrea: `id`, `nome`, `cor`, `ativa` e `restricoes` (CASES/TASKS/APPOINTMENTS — vazio = usável em qualquer lugar). Use para descobrir ids antes de filtrar processos por etiqueta (`listar_processos`, `contar_processos`). Por padrão só ativas; `uso` filtra por onde a etiqueta pode ser aplicada; `busca` filtra pelo nome (sem acento). Cache 5 min.',
+    'Lista as etiquetas (tags) do escritório no Astrea: `id`, `nome`, `cor`, `ativa` e `restricoes` (CASES/TASKS/APPOINTMENTS/DEADLINE/HEARING/HISTORIES — vazio = usável em qualquer lugar). Use para descobrir ids antes de filtrar processos por etiqueta (`listar_processos`, `contar_processos`). Por padrão só ativas; `uso` filtra por onde a etiqueta pode ser aplicada; `busca` filtra pelo nome (sem acento). Cache 5 min.',
     {
       busca: z.string().optional(),
       incluirInativas: z.boolean().optional(),
-      uso: z.enum(['processos', 'tarefas', 'compromissos']).optional(),
+      uso: z.enum(['processos', 'tarefas', 'compromissos', 'prazos', 'audiencias', 'andamentos']).optional(),
     },
     async (input) => mcpResultado(await listarEtiquetas(input)),
   );
@@ -424,6 +440,137 @@ export function createMcpServer(): McpServer {
   );
 
   server.tool(
+    'processos_novos_por_mes',
+    'Quantos processos/casos foram CADASTRADOS por mês no Astrea ("quantos processos novos por mês neste ano?"). Uma contagem por mês pela data de cadastro. `meses` (default 12, máx 36) terminando em `ate` (YYYY-MM, default mês atual). Por padrão conta todos os status (inclui os já encerrados). Aceita os filtros de `contar_processos`.',
+    {
+      meses: z.number().int().min(1).max(36).optional(),
+      ate: z.string().optional().describe('YYYY-MM'),
+      tipo: z.enum(['caso', 'processo', 'todos']).optional(),
+      status: z.enum(['ativo', 'arquivado', 'todos']).optional(),
+      responsavelId: z.string().optional(),
+      etiquetasIds: z.array(z.string()).optional(),
+      clienteIds: z.array(z.string()).optional(),
+    },
+    async ({ meses, ate, ...filtros }) => mcpResultado(await processosNovosPorMes(filtros, { meses, ate })),
+  );
+
+  server.tool(
+    'etiquetar_tarefa',
+    'Aplica ou remove etiquetas numa tarefa existente do Astrea.',
+    {
+      tarefaId: z.string(),
+      etiquetasIds: z.array(z.string()).min(1).max(20),
+      acao: z.enum(['aplicar', 'remover']),
+    },
+    async (input) => mcpResultado(await etiquetarTarefa(input)),
+  );
+
+  server.tool(
+    'criar_prazo',
+    'Cria um PRAZO processual (data fatal) num processo do Astrea — aparece na agenda como prazo, separado de tarefas. `data` YYYY-MM-DD; `responsavelId` default = usuário da integração (descubra com `listar_usuarios`); `etiquetasIds` opcional (uso "DEADLINE"). Retorna o `id`.',
+    {
+      processoId: z.string(),
+      titulo: z.string().min(1),
+      data: z.string().describe('YYYY-MM-DD'),
+      responsavelId: z.string().optional(),
+      etiquetasIds: z.array(z.string()).max(20).optional(),
+      observacoes: z.string().optional(),
+    },
+    async (input) => mcpResultado(await criarPrazo(input)),
+  );
+
+  server.tool(
+    'buscar_prazo',
+    'Carrega um prazo do Astrea pelo id (título, data, status, processo, responsável, etiquetas).',
+    { prazoId: z.string() },
+    async ({ prazoId }) => mcpResultado(await buscarPrazo(prazoId)),
+  );
+
+  server.tool(
+    'editar_prazo',
+    'Edita um prazo existente (título, data, responsável, etiquetas, observações). Só o que for informado muda. `etiquetasIds` SUBSTITUI as etiquetas atuais ([] remove todas).',
+    {
+      prazoId: z.string(),
+      titulo: z.string().min(1).optional(),
+      data: z.string().optional().describe('YYYY-MM-DD'),
+      responsavelId: z.string().optional(),
+      etiquetasIds: z.array(z.string()).max(20).optional(),
+      observacoes: z.string().optional(),
+    },
+    async ({ prazoId, ...campos }) => mcpResultado(await editarPrazo(prazoId, campos)),
+  );
+
+  server.tool(
+    'concluir_prazo',
+    'Marca um prazo como cumprido (`concluido: true`, com `motivo` opcional) ou reabre (`concluido: false`).',
+    { prazoId: z.string(), concluido: z.boolean(), motivo: z.string().optional() },
+    async ({ prazoId, concluido, motivo }) => mcpResultado(await alterarStatusPrazo(prazoId, { concluido, motivo })),
+  );
+
+  server.tool(
+    'excluir_prazo',
+    'Exclui um prazo do Astrea pelo id. Irreversível — prefira `concluir_prazo` quando o prazo foi cumprido.',
+    { prazoId: z.string() },
+    async ({ prazoId }) => mcpResultado(await excluirPrazo(prazoId)),
+  );
+
+  server.tool(
+    'criar_audiencia',
+    'Cria uma AUDIÊNCIA num processo do Astrea: `data` (YYYY-MM-DD), `horaInicio`/`horaFim` (HH:mm; fim default +30 min), `forum`, `sala`, `endereco` (ou link, se `modalidade: "remoto"`), `responsavelId` (default usuário da integração), `etiquetasIds`, `observacoes`. Por padrão recusa com CONFLICT se o responsável já tiver algo no horário (`verificarConflito: false` para forçar).',
+    {
+      processoId: z.string(),
+      titulo: z.string().min(1),
+      data: z.string().describe('YYYY-MM-DD'),
+      horaInicio: z.string().describe('HH:mm'),
+      horaFim: z.string().optional(),
+      responsavelId: z.string().optional(),
+      forum: z.string().optional(),
+      sala: z.string().optional(),
+      endereco: z.string().optional(),
+      modalidade: z.enum(['presencial', 'remoto']).optional(),
+      etiquetasIds: z.array(z.string()).max(20).optional(),
+      observacoes: z.string().optional(),
+      verificarConflito: z.boolean().optional(),
+    },
+    async (input) => mcpResultado(await criarAudiencia(input)),
+  );
+
+  server.tool(
+    'buscar_audiencia',
+    'Carrega uma audiência do Astrea pelo id (data, horário, fórum, sala, endereço, modalidade, status, processo, etiquetas).',
+    { audienciaId: z.string() },
+    async ({ audienciaId }) => mcpResultado(await buscarAudiencia(audienciaId)),
+  );
+
+  server.tool(
+    'editar_audiencia',
+    'Edita/remarca uma audiência. Só o que for informado muda; ao mudar só `horaInicio`, a duração é mantida. Checa conflito de agenda ao mudar data/horário/responsável (desligue com `verificarConflito: false`). `etiquetasIds` SUBSTITUI as atuais.',
+    {
+      audienciaId: z.string(),
+      titulo: z.string().min(1).optional(),
+      data: z.string().optional(),
+      horaInicio: z.string().optional(),
+      horaFim: z.string().optional(),
+      responsavelId: z.string().optional(),
+      forum: z.string().optional(),
+      sala: z.string().optional(),
+      endereco: z.string().optional(),
+      modalidade: z.enum(['presencial', 'remoto']).optional(),
+      etiquetasIds: z.array(z.string()).max(20).optional(),
+      observacoes: z.string().optional(),
+      verificarConflito: z.boolean().optional(),
+    },
+    async ({ audienciaId, ...campos }) => mcpResultado(await editarAudiencia(audienciaId, campos)),
+  );
+
+  server.tool(
+    'excluir_audiencia',
+    'Exclui uma audiência do Astrea pelo id. Irreversível.',
+    { audienciaId: z.string() },
+    async ({ audienciaId }) => mcpResultado(await excluirAudiencia(audienciaId)),
+  );
+
+  server.tool(
     'buscar_casos_por_cliente',
     'Lista casos de um cliente. Cada item inclui `url` com o link direto do caso/processo no app do Astrea.',
     {
@@ -472,7 +619,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'criar_tarefa',
-    'Cria uma tarefa em um caso do Astrea.',
+    'Cria uma tarefa em um caso do Astrea. `etiquetasIds` (de `listar_etiquetas` com uso "tarefas") já aplica as etiquetas na criação. Para PRAZO processual (data fatal) use `criar_prazo`.',
     {
       titulo: z.string(),
       casoId: z.string().optional(),
@@ -480,6 +627,7 @@ export function createMcpServer(): McpServer {
       listaId: z.string().optional(),
       prazo: z.string().optional(),
       prioridade: z.number().optional(),
+      etiquetasIds: z.array(z.string()).max(20).optional(),
     },
     async (input) => {
       const result = await criarTarefa(input);
@@ -990,6 +1138,7 @@ export function createMcpServer(): McpServer {
       contato: z.object({ nome: z.string(), telefone: z.string().optional(), email: z.string().optional() }).optional(),
       criarAtendimento: z.boolean().optional(),
       verificarConflito: z.boolean().optional(),
+      etiquetasIds: z.array(z.string()).max(20).optional().describe('Etiquetas (ids de `listar_etiquetas`, uso "compromissos").'),
     },
     async (input) => mcpResultado(await criarEventoAgenda(input)),
   );

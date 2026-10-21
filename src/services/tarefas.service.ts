@@ -290,6 +290,8 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceRespo
           ...(input.prazo ? { dueDate: input.prazo } : {}),
           ...(input.prioridade !== undefined ? { priority: input.prioridade } : {}),
           ...(input.casoId ? { caseId: input.casoId } : {}),
+          // Formato capturado na UI em 21/10/2026: tagIds como strings.
+          ...(input.etiquetasIds?.length ? { tagIds: input.etiquetasIds.map(String) } : {}),
         },
         idCurrentTaskList: listId,
         idUser: String(userId),

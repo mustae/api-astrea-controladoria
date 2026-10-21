@@ -124,6 +124,10 @@ As operações de mutação novas também ficam disponíveis no MCP remoto/stdio
 - `encerrar_processos` (exige `confirmar`) / `reativar_processo` · `POST /api/casos/encerrar`, `POST /api/casos/:id/reativar`
 - `criar_andamento` / `excluir_andamento` — andamento MANUAL · `POST /api/casos/:id/andamentos`, `DELETE /api/andamentos/:id`
 - `excluir_tarefa` — vai para a lixeira do Astrea · `DELETE /api/tarefas/:id`
+- `criar_prazo` / `buscar_prazo` / `editar_prazo` / `concluir_prazo` / `excluir_prazo` · `POST /api/casos/:id/prazos`, `GET|PATCH|DELETE /api/prazos/:id`, `POST /api/prazos/:id/concluir|reabrir`
+- `criar_audiencia` / `buscar_audiencia` / `editar_audiencia` / `excluir_audiencia` (checa conflito de agenda) · `POST /api/casos/:id/audiencias`, `GET|PATCH|DELETE /api/audiencias/:id`
+- `etiquetar_tarefa` · `POST /api/tarefas/:id/etiquetas`; `criar_tarefa` e `criar_evento_agenda` aceitam `etiquetasIds`
+- `processos_novos_por_mes` · `GET /api/casos/processos/novos-por-mes?meses=12&ate=YYYY-MM`
 - `excluir_evento_agenda` — exclusão definitiva de compromisso (o `cancelar_evento_agenda` mantém histórico)
 - `comentar_tarefa` — adiciona comentário em tarefa (texto puro; não aceita menção `@usuário` nem anexos nesta versão)
 

@@ -23,6 +23,8 @@ export interface ContextoPayload {
   caseId?: string | null;
   /** Nomes dos envolvidos (id → nome) para involvedWithNames. */
   nomes?: Record<string, string>;
+  /** Etiquetas como objetos completos (o formulário envia `tags: [obj]`; capturado 21/10/2026). */
+  tags?: Array<Record<string, unknown>>;
 }
 
 export const DURACAO_PADRAO_MIN = 30;
@@ -111,7 +113,7 @@ export function montarPayloadAppointment(
     notifyCustomers: false,
     notifyCustomersEmails: [],
     resendNotifications: false,
-    tags: [],
+    tags: ctx.tags ?? [],
     tagIds: [],
     caseId: ctx.caseId ?? input.casoId ?? null,
     rootCaseId: null,

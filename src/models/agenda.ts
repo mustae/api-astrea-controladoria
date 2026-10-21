@@ -124,6 +124,8 @@ export interface CriarEventoAgendaInput {
   criarAtendimento?: boolean;
   /** Default true: recusa (CONFLICT) se o responsável já tem compromisso no horário. */
   verificarConflito?: boolean;
+  /** IDs de etiquetas (`listar_etiquetas`, uso "compromissos"). */
+  etiquetasIds?: string[];
 }
 
 export interface EventoAgendaCriado {

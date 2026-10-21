@@ -8,7 +8,11 @@ import {
   listarProcessos,
 } from '../services/casos.service.js';
 import { listarAndamentos } from '../services/andamentos.service.js';
-import { contarProcessos, processosPorCliente } from '../services/processos-estatisticas.service.js';
+import {
+  contarProcessos,
+  processosNovosPorMes,
+  processosPorCliente,
+} from '../services/processos-estatisticas.service.js';
 import { httpStatusDoCodigo, idsStringArraySchema } from './query-helpers.js';
 import type { ApiResponse, ApiError } from '../types/index.js';
 import type { CasoProcesso } from '../models/caso-processo.js';
@@ -116,6 +120,30 @@ router.get('/processos/por-cliente', async (req: Request, res: Response, next: N
 
     const { topN, maxProcessos, ...filtros } = parsed.data;
     const result = await processosPorCliente(compacto(filtros), compacto({ topN, maxProcessos }));
+    if (!result.ok) {
+      const error: ApiError = { success: false, error: result.error.message, code: result.error.code };
+      res.status(httpStatusDoCodigo(result.error.code)).json(error);
+      return;
+    }
+    const response: ApiResponse<typeof result.data> = { success: true, data: result.data };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const novosPorMesSchema = filtrosEstatisticaSchema.extend({
+  meses: z.coerce.number().int().min(1).max(36).optional(),
+  ate: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'use YYYY-MM').optional(),
+});
+
+/** GET /api/casos/processos/novos-por-mes — processos cadastrados por mês (data de cadastro). */
+router.get('/processos/novos-por-mes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = novosPorMesSchema.safeParse(req.query);
+    if (!parsed.success) return erroValidacao(res, parsed.error);
+    const { meses, ate, ...filtros } = parsed.data;
+    const result = await processosNovosPorMes(compacto(filtros), compacto({ meses, ate }));
     if (!result.ok) {
       const error: ApiError = { success: false, error: result.error.message, code: result.error.code };
       res.status(httpStatusDoCodigo(result.error.code)).json(error);

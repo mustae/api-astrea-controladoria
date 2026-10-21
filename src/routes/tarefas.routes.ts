@@ -42,6 +42,7 @@ const criarTarefaSchema = z.object({
   listaId: z.string().optional(),
   prazo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   prioridade: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  etiquetasIds: z.array(z.string().regex(/^\d+$/)).max(20).optional(),
 });
 
 const atualizarTarefaSchema = z.object({

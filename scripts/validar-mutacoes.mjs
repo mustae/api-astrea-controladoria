@@ -114,5 +114,86 @@ checar('processo voltou a Ativo', (await caso())?.status === 'Ativo');
 const re2 = await api('POST', `/api/casos/${PROCESSO}/reativar`);
 checar('reativar de novo é no-op (não encerra)', re2.json?.data?.jaEstavaAtivo === true);
 
+
+// ── Rodada 2: etiquetas em tarefa/compromisso, prazos, audiências, novos por mês ──
+const todas = (await api('GET', '/api/etiquetas')).json?.data ?? [];
+const USOS = ['TASKS', 'DEADLINE', 'HEARING', 'APPOINTMENTS'];
+const tag2 =
+  (process.env.TESTE_ETIQUETA_ID && todas.find((e) => e.id === process.env.TESTE_ETIQUETA_ID)) ||
+  todas.find((e) => e.restricoes.length === 0 || USOS.every((u) => e.restricoes.includes(u))) ||
+  todas[0];
+const eu = me.json?.data?.id;
+const temTag = (lista) => (lista ?? []).some((e) => String(e.id) === String(tag2?.id));
+console.log(`\n   rodada 2 com a etiqueta "${tag2?.nome}" (${tag2?.id})`);
+
+// tarefa com etiqueta na criação + etiquetar_tarefa
+const tf2 = await api('POST', '/api/tarefas', { titulo: 'Tarefa c/ etiqueta — pode apagar', casoId: PROCESSO, responsavelId: eu, prazo: amanha, etiquetasIds: [tag2.id] });
+const tf2Id = tf2.json?.data?.id;
+checar('criar_tarefa com etiquetasIds', !!tf2Id, tf2Id ?? JSON.stringify(tf2.json));
+if (tf2Id) {
+  const rmT = await api('POST', `/api/tarefas/${tf2Id}/etiquetas`, { etiquetasIds: [tag2.id], acao: 'remover' });
+  checar('etiquetar_tarefa (remover)', rmT.status === 200, JSON.stringify(rmT.json?.error ?? ''));
+  const apT = await api('POST', `/api/tarefas/${tf2Id}/etiquetas`, { etiquetasIds: [tag2.id], acao: 'aplicar' });
+  checar('etiquetar_tarefa (aplicar — rota addTagToTask deduzida)', apT.status === 200, JSON.stringify(apT.json?.error ?? ''));
+  await api('DELETE', `/api/tarefas/${tf2Id}`);
+}
+
+// compromisso com etiqueta
+const ev = await api('POST', '/api/agenda/eventos', {
+  titulo: 'Compromisso c/ etiqueta — pode apagar', data: amanha, horaInicio: '07:00', responsavelId: eu,
+  casoId: PROCESSO, etiquetasIds: [tag2.id], verificarConflito: false,
+});
+const evId = ev.json?.data?.evento?.id ?? ev.json?.data?.id;
+checar('criar_evento_agenda com etiquetasIds', ev.status === 201 && !!evId, evId ?? JSON.stringify(ev.json));
+if (evId) {
+  const del = await api('DELETE', `/api/agenda/eventos/${evId}?forcar=1`);
+  checar('   (compromisso de teste excluído)', del.status === 200);
+}
+
+// prazo
+const pz = await api('POST', `/api/casos/${PROCESSO}/prazos`, { titulo: 'Prazo de validação — pode apagar', data: amanha, etiquetasIds: [tag2.id] });
+const pzId = pz.json?.data?.id;
+checar('criar_prazo', pz.status === 201 && !!pzId, pzId ?? JSON.stringify(pz.json));
+if (pzId) {
+  let b = await api('GET', `/api/prazos/${pzId}`);
+  checar('buscar_prazo traz a etiqueta', temTag(b.json?.data?.etiquetas), JSON.stringify(b.json?.data?.etiquetas));
+  const depois = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  const ed2 = await api('PATCH', `/api/prazos/${pzId}`, { data: depois });
+  b = await api('GET', `/api/prazos/${pzId}`);
+  checar('editar_prazo (data)', ed2.status === 200 && b.json?.data?.data === depois, b.json?.data?.data);
+  checar('editar_prazo preservou a etiqueta', temTag(b.json?.data?.etiquetas));
+  await api('POST', `/api/prazos/${pzId}/concluir`, { motivo: 'Validação' });
+  checar('concluir_prazo', (await api('GET', `/api/prazos/${pzId}`)).json?.data?.status === 'concluido');
+  await api('POST', `/api/prazos/${pzId}/reabrir`);
+  checar('reabrir prazo', (await api('GET', `/api/prazos/${pzId}`)).json?.data?.status === 'pendente');
+  const dp = await api('DELETE', `/api/prazos/${pzId}`);
+  checar('excluir_prazo', dp.status === 200);
+}
+
+// audiência
+const au = await api('POST', `/api/casos/${PROCESSO}/audiencias`, {
+  titulo: 'Audiência de validação — pode apagar', data: amanha, horaInicio: '07:30', forum: 'Fórum Teste', sala: 'Sala 1',
+  endereco: 'Rua Teste, 1', etiquetasIds: [tag2.id], verificarConflito: false,
+});
+const auId = au.json?.data?.id;
+checar('criar_audiencia', au.status === 201 && !!auId, auId ?? JSON.stringify(au.json));
+if (auId) {
+  let b = await api('GET', `/api/audiencias/${auId}`);
+  checar('buscar_audiencia (fórum, sala, horário, etiqueta)',
+    b.json?.data?.forum === 'Fórum Teste' && b.json?.data?.sala === 'Sala 1' && b.json?.data?.horaFim === '08:00' && temTag(b.json?.data?.etiquetas),
+    JSON.stringify(b.json?.data ?? b.json));
+  const ea = await api('PATCH', `/api/audiencias/${auId}`, { horaInicio: '08:00', verificarConflito: false });
+  b = await api('GET', `/api/audiencias/${auId}`);
+  checar('editar_audiencia (remarcar mantendo duração)', ea.status === 200 && b.json?.data?.horaInicio === '08:00' && b.json?.data?.horaFim === '08:30', `${b.json?.data?.horaInicio}-${b.json?.data?.horaFim}`);
+  checar('editar_audiencia preservou fórum e etiqueta', b.json?.data?.forum === 'Fórum Teste' && temTag(b.json?.data?.etiquetas));
+  const da = await api('DELETE', `/api/audiencias/${auId}`);
+  checar('excluir_audiencia', da.status === 200);
+}
+
+// processos novos por mês (o processo de teste foi cadastrado neste mês)
+const npm = await api('GET', '/api/casos/processos/novos-por-mes?meses=2');
+const ultimo = npm.json?.data?.meses?.at(-1);
+checar('processos_novos_por_mes', npm.status === 200 && ultimo?.total >= 1, JSON.stringify(npm.json?.data?.meses ?? npm.json));
+
 console.log(falhas ? `\n${falhas} verificação(ões) falharam.` : '\nTudo certo.');
 process.exit(falhas ? 1 : 0);

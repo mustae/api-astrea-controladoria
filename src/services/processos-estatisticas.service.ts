@@ -182,3 +182,79 @@ export async function processosPorCliente(
     return falha(err, 'processosPorCliente');
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// processosNovosPorMes — 1× /case-list/count por mês, filtrando a DATA DE CADASTRO.
+//
+// Capturado na UI em 21/10/2026 (filtro "Data de cadastro" → período personalizado):
+// queryDTO ganha `fromDate`/`toDate` = meia-noite de Brasília (03:00Z) do 1º e do
+// último dia, com `createddate: null` ("MONTH" é o atalho do mês corrente).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface OpcoesNovosPorMes {
+  /** Quantos meses (default 12, máx 36), terminando em `ate`. */
+  meses?: number;
+  /** Último mês, `YYYY-MM` (default: mês corrente em Brasília). */
+  ate?: string;
+}
+
+export interface NovosPorMes {
+  total: number;
+  meses: Array<{ mes: string; total: number }>;
+}
+
+function mesCorrenteSP(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' })
+    .format(new Date())
+    .slice(0, 7);
+}
+
+/** Lista de meses `YYYY-MM`, do mais antigo para `ate`. */
+export function listaDeMeses(ate: string, n: number): string[] {
+  const [a, m] = ate.split('-').map(Number);
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const idx = a * 12 + (m - 1) - i;
+    out.push(`${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+function limitesDoMes(mes: string): { fromDate: string; toDate: string } {
+  const [a, m] = mes.split('-').map(Number);
+  const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  return { fromDate: `${mes}-01T03:00:00.000Z`, toDate: `${mes}-${String(ultimo).padStart(2, '0')}T03:00:00.000Z` };
+}
+
+export async function processosNovosPorMes(
+  filtros: FiltrosEstatisticaProcesso = {},
+  opcoes: OpcoesNovosPorMes = {},
+): Promise<ServiceResponse<NovosPorMes>> {
+  try {
+    const n = opcoes.meses ?? 12;
+    if (!Number.isInteger(n) || n < 1 || n > 36) throw new Error('VALIDATION_ERROR: meses deve ser de 1 a 36');
+    const ate = opcoes.ate ?? mesCorrenteSP();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ate)) throw new Error('VALIDATION_ERROR: ate deve ser YYYY-MM');
+    // Processos "novos" incluem os que já foram encerrados: status todos por padrão.
+    const f: FiltrosEstatisticaProcesso = { ...filtros, status: filtros.status ?? 'todos' };
+    buildCaseQueryDTO(f, 0);
+
+    const meses = await withBrowserContext(async (page) => {
+      await navigateTo(page, ANGULAR_PAGE_PATH);
+      const userId = Number(await getAstreaUserId(page));
+      const base = buildCaseQueryDTO(f, userId);
+      const out: Array<{ mes: string; total: number }> = [];
+      for (const mes of listaDeMeses(ate, n)) {
+        const queryDTO = { ...base, createddate: null, ...limitesDoMes(mes) };
+        const res = await astreaApiPost<{ count?: number }>(page, '/case-list/count', buildCaseQueryBody(queryDTO, userId));
+        if (typeof res?.count !== 'number') throw new Error(`API_ERROR: /case-list/count sem count para ${mes}`);
+        out.push({ mes, total: res.count });
+      }
+      return out;
+    });
+
+    return { ok: true, data: { total: meses.reduce((s, x) => s + x.total, 0), meses } };
+  } catch (err) {
+    return falha(err, 'processosNovosPorMes');
+  }
+}
