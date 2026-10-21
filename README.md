@@ -119,6 +119,11 @@ As operações de mutação novas também ficam disponíveis no MCP remoto/stdio
 - `listar_etiquetas` — etiquetas (id, nome, cor, ativa, restrições CASES/TASKS/APPOINTMENTS); cache 5 min
 - `contar_processos` — total de processos/casos para os filtros (inclui `etiquetasIds`/`clienteIds`)
 - `processos_por_cliente` — ranking de clientes por quantidade de processos
+- `etiquetar_processos` — aplica/remove etiquetas em lote (≤200 processos; >10 exige `confirmar`) · `POST /api/casos/etiquetas`
+- `editar_processo` — objeto, valor da condenação, título (preserva o resto) · `PATCH /api/casos/:id`
+- `encerrar_processos` (exige `confirmar`) / `reativar_processo` · `POST /api/casos/encerrar`, `POST /api/casos/:id/reativar`
+- `criar_andamento` / `excluir_andamento` — andamento MANUAL · `POST /api/casos/:id/andamentos`, `DELETE /api/andamentos/:id`
+- `excluir_tarefa` — vai para a lixeira do Astrea · `DELETE /api/tarefas/:id`
 - `excluir_evento_agenda` — exclusão definitiva de compromisso (o `cancelar_evento_agenda` mantém histórico)
 - `comentar_tarefa` — adiciona comentário em tarefa (texto puro; não aceita menção `@usuário` nem anexos nesta versão)
 

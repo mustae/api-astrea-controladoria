@@ -7,7 +7,10 @@
 //   • Use um PROCESSO DE TESTE (crie um "TESTE DISCOVERY - APAGAR" antes) — o roteiro
 //     aplica etiqueta, edita, encerra e reativa, cria e apaga andamento/tarefa.
 //
-// Uso (PowerShell, na raiz do projeto):
+// Credenciais: coloque DISC_EMAIL e DISC_PASS no arquivo .env (recomendado) e rode só:
+//   node scripts/discover-etiquetas-processos.mjs                  (todas as 11 etapas)
+//   node scripts/discover-etiquetas-processos.mjs --so=etiqueta    (só etiquetas)
+// Ou defina no terminal (PowerShell, na raiz do projeto):
 //   $env:DISC_EMAIL='usuario@escritorio'; $env:DISC_PASS='senha'; node scripts/discover-etiquetas-processos.mjs
 // Uso (bash):
 //   DISC_EMAIL='...' DISC_PASS='...' node scripts/discover-etiquetas-processos.mjs
@@ -22,6 +25,7 @@
 //        gravado e cabeçalhos Authorization não são salvos.
 // Envie o JSON para quem for implementar (ou cole no chat com o Claude).
 
+import 'dotenv/config'; // lê DISC_EMAIL/DISC_PASS do .env, se existirem
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +36,7 @@ import { stdin, stdout } from 'node:process';
 const EMAIL = process.env.DISC_EMAIL;
 const PASS = process.env.DISC_PASS;
 if (!EMAIL || !PASS) {
-  console.error('FALTAM credenciais. Defina DISC_EMAIL e DISC_PASS.');
+  console.error('FALTAM credenciais. Defina DISC_EMAIL e DISC_PASS no .env (ou no terminal).');
   process.exit(1);
 }
 
@@ -85,6 +89,20 @@ const ETAPAS = [
       'Na LISTA de "Processos e casos", aplique o filtro por DATA DE CADASTRO/CRIAÇÃO (ex.: este mês). Serve para "processos novos por mês".',
   },
 ];
+
+// --so=etiqueta            → só as etapas de etiqueta
+// --so=etiqueta,andamento  → várias (prefixo do id da etapa)
+const argSo = process.argv.find((a) => a.startsWith('--so='))?.slice(5);
+if (argSo) {
+  const prefixos = argSo.split(',').map((x) => x.trim()).filter(Boolean);
+  const filtradas = ETAPAS.filter((e) => prefixos.some((p) => e.id.startsWith(p)));
+  if (!filtradas.length) {
+    console.error(`Nenhuma etapa com prefixo ${argSo}. Etapas: ${ETAPAS.map((e) => e.id).join(', ')}`);
+    process.exit(1);
+  }
+  ETAPAS.splice(0, ETAPAS.length, ...filtradas);
+  console.log(`Rodando só: ${ETAPAS.map((e) => e.id).join(', ')}`);
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'discovery-output');

@@ -14,6 +14,7 @@ import healthRoutes from './routes/health.routes.js';
 import clientesRoutes from './routes/clientes.routes.js';
 import casosRoutes from './routes/casos.routes.js';
 import etiquetasRoutes from './routes/etiquetas.routes.js';
+import processosMutacoesRoutes from './routes/processos-mutacoes.routes.js';
 import andamentosRoutes from './routes/andamentos.routes.js';
 import tarefasRoutes from './routes/tarefas.routes.js';
 import publicacoesRoutes from './routes/publicacoes.routes.js';
@@ -67,6 +68,7 @@ app.use('/api/atendimentos', atendimentosRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/kanban', kanbanRoutes);
 app.use('/api/agenda', agendaRoutes);
+app.use('/api', processosMutacoesRoutes);
 
 // Rota catch-all para 404
 app.use((_req, res) => {

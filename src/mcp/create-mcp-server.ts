@@ -53,6 +53,15 @@ import {
   remarcarEventoAgenda,
 } from '../services/agenda-eventos.service.js';
 import { listarEtiquetas } from '../services/etiquetas.service.js';
+import {
+  criarAndamento,
+  editarProcesso,
+  encerrarProcessos,
+  etiquetarProcessos,
+  excluirAndamento,
+  excluirTarefa,
+  reativarProcesso,
+} from '../services/processos-mutacoes.service.js';
 import { contarProcessos, processosPorCliente } from '../services/processos-estatisticas.service.js';
 import type { ServiceResponse } from '../types/index.js';
 
@@ -343,6 +352,75 @@ export function createMcpServer(): McpServer {
     },
     async ({ topN, maxProcessos, ...filtros }) =>
       mcpResultado(await processosPorCliente(filtros, { topN, maxProcessos })),
+  );
+
+  server.tool(
+    'etiquetar_processos',
+    'Aplica ou REMOVE etiquetas em processos/casos do Astrea, em lote (até 200 processos × 20 etiquetas). Uma chamada síncrona por processo, em série; o resultado traz `itens[]` com `ok`/`erro` por processo — falha de um não interrompe os outros. Acima de 10 processos exige `confirmar: true` (mostre ao usuário a lista antes). Ids de etiqueta vêm de `listar_etiquetas`.',
+    {
+      processoIds: z.array(z.string()).min(1).max(200),
+      etiquetasIds: z.array(z.string()).min(1).max(20),
+      acao: z.enum(['aplicar', 'remover']),
+      confirmar: z.boolean().optional(),
+    },
+    async (input) => mcpResultado(await etiquetarProcessos(input)),
+  );
+
+  server.tool(
+    'editar_processo',
+    'Edita UM processo judicial no Astrea: `objeto`, `valorCondenacao` e/ou `titulo`. Lê o processo atual e regrava preservando todo o resto (partes, etiquetas, responsável). Ainda não suporta casos extrajudiciais.',
+    {
+      processoId: z.string(),
+      objeto: z.string().optional(),
+      valorCondenacao: z.number().nonnegative().optional(),
+      titulo: z.string().min(1).optional(),
+    },
+    async ({ processoId, ...campos }) => mcpResultado(await editarProcesso(processoId, campos)),
+  );
+
+  server.tool(
+    'encerrar_processos',
+    'ENCERRA (inativa) processos no Astrea, em lote (até 200). As informações continuam consultáveis e dá para reabrir com `reativar_processo`. SEMPRE exige `confirmar: true` — confirme com o usuário antes. `desvincularTribunal` (default false) para o acompanhamento automático; `valorCondenacao` opcional.',
+    {
+      processoIds: z.array(z.string()).min(1).max(200),
+      valorCondenacao: z.number().nonnegative().optional(),
+      desvincularTribunal: z.boolean().optional(),
+      confirmar: z.boolean().optional(),
+    },
+    async (input) => mcpResultado(await encerrarProcessos(input)),
+  );
+
+  server.tool(
+    'reativar_processo',
+    'Reabre um processo encerrado no Astrea. Se ele já estiver ativo, não faz nada (`jaEstavaAtivo: true`).',
+    { processoId: z.string() },
+    async ({ processoId }) => mcpResultado(await reativarProcesso(processoId)),
+  );
+
+  server.tool(
+    'criar_andamento',
+    'Lança um andamento MANUAL na timeline (histórico) de um processo do Astrea — registra um ato/observação; não é captura automática do tribunal. `data` em YYYY-MM-DD (meio-dia, horário de Brasília) ou ISO; default agora. Quebras de linha viram parágrafos. Retorna o `id` (use em `excluir_andamento` para desfazer).',
+    {
+      processoId: z.string(),
+      descricao: z.string().min(1),
+      data: z.string().optional(),
+      responsavelId: z.string().optional(),
+    },
+    async (input) => mcpResultado(await criarAndamento(input)),
+  );
+
+  server.tool(
+    'excluir_andamento',
+    'Exclui um andamento (histórico) do Astrea pelo id. Use para desfazer um andamento manual lançado errado.',
+    { andamentoId: z.string() },
+    async ({ andamentoId }) => mcpResultado(await excluirAndamento(andamentoId)),
+  );
+
+  server.tool(
+    'excluir_tarefa',
+    'Exclui uma tarefa do Astrea pelo id (vai para a lixeira do Astrea — retorna `lixeiraId`).',
+    { tarefaId: z.string() },
+    async ({ tarefaId }) => mcpResultado(await excluirTarefa(tarefaId)),
   );
 
   server.tool(

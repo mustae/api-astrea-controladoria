@@ -21,13 +21,22 @@ Prioridade definida: **Etiquetas** e **Processos/andamentos**.
 | `astrea_compromisso_excluir` | `excluir_evento_agenda` | ✅ feito (service já existia) | `DELETE /appointments/{id}` |
 | `astrea_responsaveis` | `listar_usuarios` | ✅ já existia | — |
 | `astrea_andamentos` | `listar_andamentos` | ✅ já existia | `POST /historical/query-history` |
-| `astrea_etiquetar_aplicar` / `remover` (lote) | `etiquetar_processos` | 🔎 discovery | ? |
-| `astrea_processo_editar` | `editar_processo` (read-modify-write) | 🔎 discovery | ? (provável save do folder) |
-| `astrea_encerrar` (lote) | `encerrar_processos` | 🔎 discovery | ? |
-| `astrea_andamento_criar` | `criar_andamento` | 🔎 discovery | ? (`historical` manual) |
-| `astrea_tarefa_excluir` | `excluir_tarefa` | 🔎 discovery | ? (mcp.ai pede `case_id`, o que sugere uma rota por caso, como `/tasks/case/{caseId}/...`) |
-| `astrea_processos_novos_por_mes` | `processos_novos_por_mes` | 🔎 discovery | `queryDTO.createddate` (formato desconhecido) |
+| `astrea_etiquetar_aplicar` / `remover` (lote) | `etiquetar_processos` · `POST /api/casos/etiquetas` | ✅ feito | `GET /_ah/api/folders/v1/addTagToCase` / `removeTagFromCase` (síncrono, 1 por processo × etiqueta) |
+| `astrea_processo_editar` | `editar_processo` · `PATCH /api/casos/:id` | ✅ feito (só processos judiciais) | `getCaseById` → `POST /_ah/api/folders/v1/saveLawsuit` |
+| `astrea_encerrar` (lote) | `encerrar_processos` · `POST /api/casos/encerrar` + `reativar_processo` | ✅ feito | `POST /folder/inactivate` · `PUT /case/toggle-activate-inactivate-case` (TOGGLE — checa status antes) |
+| `astrea_andamento_criar` | `criar_andamento` · `POST /api/casos/:id/andamentos` + `excluir_andamento` | ✅ feito | `POST /_ah/api/histories/v1/saveHistoricalByCase` · `DELETE /historical/{id}` |
+| `astrea_tarefa_excluir` | `excluir_tarefa` · `DELETE /api/tarefas/:id` | ✅ feito | `getTaskWithComments` → `POST /_ah/api/workspace/v1/deleteTask` (vai para a lixeira; não precisa do processo) |
+| `astrea_processos_novos_por_mes` | `processos_novos_por_mes` | 🔎 falta 1 captura | `queryDTO.createddate` aceita `"MONTH"` (mês corrente) + `fromDate`/`toDate`; falta capturar o filtro **personalizado** (intervalo de datas) |
 | Financeiro, modelos/documentos, conta | — | ⏸ fora da prioridade atual | — |
+
+## Discovery de 21/10/2026
+
+Rodado com a conta de teste no processo "TESTE DISCOVERY - APAGAR" (11 etapas). Contratos documentados no topo de `src/services/processos-mutacoes.service.ts`.
+
+- A UI usa `POST /api/v2/batch-action/enqueue` (`CASE_TAG_ADD` / `CASE_TAG_REMOVE`) para etiquetas em lote. Essa rota é assíncrona: devolve um `firebaseToken` e não dá o resultado de cada processo. Por isso a implementação usa a chamada síncrona por processo.
+- `toggle-activate-inactivate-case` **alterna** o estado. Chamado num processo ativo, ele o encerra. Por isso `reativar_processo` lê o status antes.
+
+**Validação ao vivo:** suba a API com a conta de teste (`npm run dev`) e rode `node scripts/validar-mutacoes.mjs <idDoProcessoDeTeste>`. O script desfaz o que fez em cada passo.
 
 ## Como destravar os itens 🔎
 
