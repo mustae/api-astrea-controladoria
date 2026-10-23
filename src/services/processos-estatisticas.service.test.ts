@@ -108,7 +108,7 @@ describe('processosPorCliente', () => {
 });
 
 describe('processosNovosPorMes', () => {
-  it('1 count por mês com fromDate/toDate (meia-noite de Brasília), status todos por padrão', async () => {
+  it('1 count por mês com createddate MANUAL + fromDate/toDate (meia-noite de Brasília), status todos por padrão', async () => {
     mockPost.mockResolvedValueOnce({ count: 3 }).mockResolvedValueOnce({ count: 7 });
     const r = await processosNovosPorMes({}, { meses: 2, ate: '2026-10' });
 
@@ -116,7 +116,7 @@ describe('processosNovosPorMes', () => {
     const dto1 = (mockPost.mock.calls[0][2] as { queryDTO: Record<string, unknown> }).queryDTO;
     expect(mockPost.mock.calls[0][1]).toBe('/case-list/count');
     expect(dto1).toMatchObject({
-      createddate: null,
+      createddate: 'MANUAL',
       fromDate: '2026-09-01T03:00:00.000Z',
       toDate: '2026-09-30T03:00:00.000Z',
       status: null,
@@ -133,7 +133,7 @@ describe('processosNovosPorMes', () => {
     mockPost.mockResolvedValue({ count: 0 });
     await processosNovosPorMes({ status: 'ativo' }, { meses: 2, ate: '2028-02' });
     const d = mockPost.mock.calls.map((c) => (c[2] as { queryDTO: Record<string, unknown> }).queryDTO);
-    expect(d[0]).toMatchObject({ fromDate: '2028-01-01T03:00:00.000Z', toDate: '2028-01-31T03:00:00.000Z', status: 'Active' });
+    expect(d[0]).toMatchObject({ createddate: 'MANUAL', fromDate: '2028-01-01T03:00:00.000Z', toDate: '2028-01-31T03:00:00.000Z', status: 'Active' });
     expect(d[1]).toMatchObject({ fromDate: '2028-02-01T03:00:00.000Z', toDate: '2028-02-29T03:00:00.000Z' });
   });
 

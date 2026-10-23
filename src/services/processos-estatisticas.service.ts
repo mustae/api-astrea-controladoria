@@ -186,9 +186,11 @@ export async function processosPorCliente(
 // ─────────────────────────────────────────────────────────────────────────────
 // processosNovosPorMes — 1× /case-list/count por mês, filtrando a DATA DE CADASTRO.
 //
-// Capturado na UI em 21/10/2026 (filtro "Data de cadastro" → período personalizado):
-// queryDTO ganha `fromDate`/`toDate` = meia-noite de Brasília (03:00Z) do 1º e do
-// último dia, com `createddate: null` ("MONTH" é o atalho do mês corrente).
+// Confirmado ao vivo em 23/10/2026 (scripts/sondar-createddate-manual.mjs): o período
+// personalizado exige o marcador `createddate: "MANUAL"` junto de `fromDate`/`toDate`
+// (meia-noite de Brasília, 03:00Z, do 1º e do último dia). Com `createddate: null` as
+// datas são ignoradas e o count devolve a carteira inteira. Os outros valores do DateEnum
+// (TODAY/WEEK/MONTH/TWO_MONTHS/THREE_MONTHS) são janelas móveis, não meses do calendário.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface OpcoesNovosPorMes {
@@ -245,7 +247,7 @@ export async function processosNovosPorMes(
       const base = buildCaseQueryDTO(f, userId);
       const out: Array<{ mes: string; total: number }> = [];
       for (const mes of listaDeMeses(ate, n)) {
-        const queryDTO = { ...base, createddate: null, ...limitesDoMes(mes) };
+        const queryDTO = { ...base, createddate: 'MANUAL', ...limitesDoMes(mes) };
         const res = await astreaApiPost<{ count?: number }>(page, '/case-list/count', buildCaseQueryBody(queryDTO, userId));
         if (typeof res?.count !== 'number') throw new Error(`API_ERROR: /case-list/count sem count para ${mes}`);
         out.push({ mes, total: res.count });
