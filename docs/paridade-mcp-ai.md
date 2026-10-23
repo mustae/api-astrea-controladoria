@@ -26,8 +26,8 @@ Prioridade definida: **Etiquetas** e **Processos/andamentos**.
 | `astrea_encerrar` (lote) | `encerrar_processos` · `POST /api/casos/encerrar` + `reativar_processo` | ✅ feito | `POST /folder/inactivate` · `PUT /case/toggle-activate-inactivate-case` (TOGGLE — checa status antes) |
 | `astrea_andamento_criar` | `criar_andamento` · `POST /api/casos/:id/andamentos` + `excluir_andamento` | ✅ feito | `POST /_ah/api/histories/v1/saveHistoricalByCase` · `DELETE /historical/{id}` |
 | `astrea_tarefa_excluir` | `excluir_tarefa` · `DELETE /api/tarefas/:id` | ✅ feito | `getTaskWithComments` → `POST /_ah/api/workspace/v1/deleteTask` (vai para a lixeira; não precisa do processo) |
-| `astrea_processos_novos_por_mes` | `processos_novos_por_mes` · `GET /api/casos/processos/novos-por-mes` | ✅ feito | `/case-list/count` por mês com `queryDTO.fromDate`/`toDate` (03:00Z = meia-noite BRT) e `createddate: null` |
-| `astrea_tarefa_criar` (etiquetas) | `criar_tarefa` + `etiquetasIds` · `etiquetar_tarefa` · `POST /api/tarefas/:id/etiquetas` | ✅ feito (aplicar em tarefa existente: rota deduzida, validar) | `taskInfoDTO.tagIds` · `GET /_ah/api/workspace/v1/removeTagFromTask` / `addTagToTask` |
+| `astrea_processos_novos_por_mes` | `processos_novos_por_mes` · `GET /api/casos/processos/novos-por-mes` | ✅ feito (validado ao vivo 23/10/2026) | 1× `/case-list/count` por mês com `createddate: "MANUAL"` + `fromDate`/`toDate`. Sem o marcador `MANUAL` as datas são ignoradas. Os presets do `DateEnum` (`TODAY`/`WEEK`/`MONTH`/`TWO_MONTHS`/`THREE_MONTHS`) são janelas móveis |
+| `astrea_tarefa_criar` (etiquetas) | `criar_tarefa` + `etiquetasIds` · `etiquetar_tarefa` · `POST /api/tarefas/:id/etiquetas` | ✅ feito (validado ao vivo 23/10/2026) | `taskInfoDTO.tagIds` · `GET /_ah/api/workspace/v1/removeTagFromTask` / `addTagToTask` (este exige também `loggedUserId`) |
 | `astrea_compromisso_criar` (etiquetas) | `criar_evento_agenda` + `etiquetasIds` | ✅ feito | appointment usa `tags: [objeto completo]` (não `tagIds`) |
 | — (mcp.ai não tem) | `criar_prazo`, `buscar_prazo`, `editar_prazo`, `concluir_prazo`, `excluir_prazo` · `/api/casos/:id/prazos`, `/api/prazos/:id` | ✅ feito | `POST /deadlines/save` · `GET /deadlines/{id}` · `POST /deadlines/update-status` · `POST /deadlines/{id}/delete` |
 | — (mcp.ai não tem) | `criar_audiencia`, `buscar_audiencia`, `editar_audiencia`, `excluir_audiencia` · `/api/casos/:id/audiencias`, `/api/audiencias/:id` | ✅ feito | `POST /hearings/save` · `GET /hearings/{id}` · `POST /hearings/{id}/delete` · conflito: `POST /calendar-pro/calendar-conflicts` |
@@ -66,3 +66,22 @@ Rodada sobre prazos, audiências e etiquetas em tarefa e compromisso. Contratos 
 - Exigir uma confirmação explícita nas tools MCP, por exemplo `confirmar: true`. Elas afetam muitos processos de uma vez.
 - Limitar a 200 processos por chamada.
 - Invalidar o cache de etiquetas e de processos depois de cada mutação.
+
+## Estado em 23/10/2026 (passagem para o Claude Code)
+
+**Validado ao vivo** (`scripts/validar-mutacoes.mjs`, conta de teste, processo `4959517162110976`):
+
+- etiquetas em processo e o filtro `tagIds`;
+- editar, encerrar e reativar processo;
+- andamento manual;
+- prazos;
+- audiências.
+
+**Pendências, em ordem:**
+
+1. ~~**`processos_novos_por_mes` está errado.**~~ Resolvido em 23/10/2026. `sondar-astrea.mjs` mostrou que nenhum valor customizado de `createddate` é aceito e que ordenar por data de cadastro não existe (`order` desconhecido cai em `lastMovement`). O bundle do Astrea revelou o marcador `"MANUAL"` (`scripts/sondar-createddate-manual.mjs`): com ele, `fromDate`/`toDate` filtram (set/2026 = 7, out/2026 = 9, os dois juntos = 16).
+2. ~~**Rodar `validar-mutacoes.mjs` de novo.**~~ Tudo ✅ em 23/10/2026. `etiquetar_tarefa`/aplicar dava 400 por falta de `loggedUserId`, corrigido conforme o bundle.
+3. ~~**Commitar.**~~ Feito em 23/10/2026, um commit por tema (o conteúdo de `../0001…0003-*.patch` entrou nesses commits).
+4. **Deploy:** Docker Compose na VPS, de preferência via Coolify. As variáveis vão no painel: `ASTREA_EMAIL`/`ASTREA_PASSWORD` da conta de produção (diferente da conta de teste), `API_KEY`, `ASTREA_TENANT_ID` e `TRUST_PROXY=1`.
+
+O `.env` local usa a **conta de teste** tanto em `ASTREA_*` quanto em `DISC_*`.
