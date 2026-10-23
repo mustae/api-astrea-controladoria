@@ -93,8 +93,11 @@ if (an.json?.data?.id) {
 
 // ── Tarefa ──────────────────────────────────────────────────────────────────
 const me = await api('GET', '/api/usuarios/me');
+// /api/usuarios/me depende de ASTREA_TENANT_ID correto no .env; sem ele, usa o responsável do processo de teste.
+const euId = me.json?.data?.id || (await caso())?.responsavelId;
+if (!me.json?.data?.id) console.log(`⚠️  /api/usuarios/me falhou (${me.status}) — confira ASTREA_TENANT_ID no .env. Usando o responsável do processo: ${euId}`);
 const amanha = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-const tf = await api('POST', '/api/tarefas', { titulo: 'Tarefa de validação — pode apagar', casoId: PROCESSO, responsavelId: me.json?.data?.id, prazo: amanha });
+const tf = await api('POST', '/api/tarefas', { titulo: 'Tarefa de validação — pode apagar', casoId: PROCESSO, responsavelId: euId, prazo: amanha });
 const tarefaId = tf.json?.data?.id;
 checar('criar_tarefa (pré-requisito)', !!tarefaId, tarefaId ?? JSON.stringify(tf.json));
 if (tarefaId) {
@@ -122,7 +125,7 @@ const tag2 =
   (process.env.TESTE_ETIQUETA_ID && todas.find((e) => e.id === process.env.TESTE_ETIQUETA_ID)) ||
   todas.find((e) => e.restricoes.length === 0 || USOS.every((u) => e.restricoes.includes(u))) ||
   todas[0];
-const eu = me.json?.data?.id;
+const eu = euId;
 const temTag = (lista) => (lista ?? []).some((e) => String(e.id) === String(tag2?.id));
 console.log(`\n   rodada 2 com a etiqueta "${tag2?.nome}" (${tag2?.id})`);
 
@@ -134,7 +137,7 @@ if (tf2Id) {
   const rmT = await api('POST', `/api/tarefas/${tf2Id}/etiquetas`, { etiquetasIds: [tag2.id], acao: 'remover' });
   checar('etiquetar_tarefa (remover)', rmT.status === 200, JSON.stringify(rmT.json?.error ?? ''));
   const apT = await api('POST', `/api/tarefas/${tf2Id}/etiquetas`, { etiquetasIds: [tag2.id], acao: 'aplicar' });
-  checar('etiquetar_tarefa (aplicar — rota addTagToTask deduzida)', apT.status === 200, JSON.stringify(apT.json?.error ?? ''));
+  checar('etiquetar_tarefa (aplicar)', apT.status === 200, JSON.stringify(apT.json?.error ?? ''));
   await api('DELETE', `/api/tarefas/${tf2Id}`);
 }
 

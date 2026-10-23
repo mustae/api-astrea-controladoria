@@ -159,8 +159,8 @@ export async function etiquetarProcessos(
 // ─────────────────────────────────────────────────────────────────────────────
 // Etiquetas em TAREFA
 //   remover: GET /_ah/api/workspace/v1/removeTagFromTask?taskId&tagId&userId (capturado 21/10/2026)
-//   aplicar: GET /_ah/api/workspace/v1/addTagToTask?taskId&tagId&userId (simétrico ao de
-//            processos; validar ao vivo — na criação use `etiquetasIds` em criar_tarefa)
+//   aplicar: GET /_ah/api/workspace/v1/addTagToTask?taskId&tagId&userId&loggedUserId
+//            (a UI manda loggedUserId só ao aplicar; sem ele dá 400 — validado 23/10/2026)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface EtiquetarTarefaInput {
@@ -178,11 +178,10 @@ export async function etiquetarTarefa(
     const metodo = input.acao === 'remover' ? 'removeTagFromTask' : 'addTagToTask';
     await withBrowserContext(async (page) => {
       const userId = await abrir(page);
+      const usuario = encodeURIComponent(userId);
+      const extra = input.acao === 'remover' ? '' : `&loggedUserId=${usuario}`;
       for (const tagId of etiquetas) {
-        await astreaGapiGet(
-          page,
-          `/workspace/v1/${metodo}?taskId=${tarefaId}&tagId=${tagId}&userId=${encodeURIComponent(userId)}`,
-        );
+        await astreaGapiGet(page, `/workspace/v1/${metodo}?taskId=${tarefaId}&tagId=${tagId}&userId=${usuario}${extra}`);
       }
     });
     return { ok: true, data: { tarefaId, acao: input.acao, etiquetasIds: etiquetas } };

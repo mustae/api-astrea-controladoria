@@ -51,10 +51,10 @@ describe('etiquetarTarefa', () => {
     expect(r).toEqual({ ok: true, data: { tarefaId: '5861852109373440', acao: 'remover', etiquetasIds: ['6168384449937408'] } });
   });
 
-  it('aplicar: GET addTagToTask', async () => {
+  it('aplicar: GET addTagToTask com loggedUserId (sem ele o Astrea dá 400, validado em 23/10/2026)', async () => {
     mGet.mockResolvedValue({});
     await etiquetarTarefa({ tarefaId: '1', etiquetasIds: ['2', '3'], acao: 'aplicar' });
     expect(mGet).toHaveBeenCalledTimes(2);
-    expect(mGet.mock.calls[1][1]).toBe(`/workspace/v1/addTagToTask?taskId=1&tagId=3&userId=${USER}`);
+    expect(mGet.mock.calls[1][1]).toBe(`/workspace/v1/addTagToTask?taskId=1&tagId=3&userId=${USER}&loggedUserId=${USER}`);
   });
 });
