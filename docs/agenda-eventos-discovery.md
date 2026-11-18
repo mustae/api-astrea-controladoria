@@ -1,6 +1,6 @@
 # Agenda — eventos (compromissos) do Astrea: discovery e confirmação em runtime
 
-**Data**: 25/09/2026 · **Conta**: usuário de automação (`admin@alvesbernabe.com`, id `6528036269752320`) · **Consumidor**: agenda da atendente virtual Léia (n8n) — plano em `assistente-marketing-escritorio/docs/plano-agenda-astrea-2026-09-25.md`.
+**Data**: 25/09/2026 · **Conta**: usuário de automação · **Consumidor**: agenda da atendente virtual Léia (n8n) — plano em `assistente-marketing-escritorio/docs/plano-agenda-astrea-2026-09-25.md`.
 
 ## 1. Como foi descoberto
 

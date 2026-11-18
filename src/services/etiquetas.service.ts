@@ -19,6 +19,7 @@ import { isRetryablePlaywrightError } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
 import { codigoDoErro } from './casos-query.js';
 import type { ServiceResponse } from '../types/index.js';
+import { semAcento } from '../utils/sanitize.js';
 
 export type RestricaoEtiqueta = 'CASES' | 'TASKS' | 'APPOINTMENTS' | string;
 
@@ -79,10 +80,6 @@ export function mapTag(t: AstreaTag): Etiqueta {
     ativa: t.active !== false,
     restricoes: Array.isArray(t.restrictions) ? [...t.restrictions] : [],
   };
-}
-
-function semAcento(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 async function carregarTodas(): Promise<Etiqueta[]> {

@@ -20,10 +20,7 @@ export default defineConfig({
         'src/mcp/**',
         // Infra de browser/log/email/llm — não unit-testáveis sem Playwright real.
         'src/utils/logger.ts',
-        'src/utils/mailer.ts',
-        'src/utils/llm-navigator.ts',
         'src/browser/pool.ts',
-        'src/browser/session.ts',
         'src/browser/navigator.ts',
         'src/browser/astrea-http.ts',
         // Tipos/modelos puros (sem código executável).
@@ -39,17 +36,13 @@ export default defineConfig({
         'src/services/atendimentos.service.ts',
         'src/services/casos.service.ts',
         'src/services/documentos.service.ts',
-        'src/services/kanban.service.ts',
         'src/services/publicacoes.service.ts',
-        'src/services/tarefas.service.ts',
         'src/services/usuarios.service.ts',
         'src/routes/andamentos.routes.ts',
         'src/routes/atendimentos.routes.ts',
         'src/routes/casos.routes.ts',
         'src/routes/kanban.routes.ts',
-        'src/routes/mcp.routes.ts',
         'src/routes/publicacoes.routes.ts',
-        'src/routes/tarefas.routes.ts',
         'src/routes/usuarios.routes.ts',
       ],
       thresholds: {

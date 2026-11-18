@@ -984,7 +984,7 @@ export async function criarCaso(input: CriarCasoInput): Promise<ServiceResponse<
         throw new Error('API_ERROR: Astrea não retornou folder.id após criação do caso');
       }
       return String(createdId);
-    });
+    }, { escrita: true });
 
     return await buscarCaso(folderId);
   } catch (err) {
@@ -1093,7 +1093,7 @@ export async function criarProcesso(
         throw new Error('API_ERROR: Astrea não retornou folder.id após criação do processo');
       }
       return String(createdId);
-    });
+    }, { escrita: true });
 
     return await buscarCaso(folderId);
   } catch (err) {

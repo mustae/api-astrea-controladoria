@@ -61,6 +61,7 @@ import { listarUsuarios } from './usuarios.service.js';
 import { buscarContatosNaPagina, criarContatoNaPagina } from './clientes.service.js';
 import { criarAtendimentoNaPagina, listarAtendimentosDoContatoNaPagina } from './atendimentos.service.js';
 import type { CriarEventoAgendaInput } from '../models/index.js';
+import { limparCacheQuadrosKanban } from './kanban-destino.js';
 
 const mockPost = vi.mocked(astreaApiPost);
 const mockGet = vi.mocked(astreaApiGet);
@@ -181,6 +182,7 @@ describe('criarEventoAgenda — criação', () => {
       atendimento: null,
       parcial: false,
       erros: [],
+      kanban: null,
     });
   });
 
@@ -798,5 +800,47 @@ describe('buscarEventosPorContato', () => {
   ])('sem telefone nem chave (%o) → VALIDATION_ERROR (nada de lista vazia enganosa)', async (extra) => {
     const r = await buscarEventosPorContato({ inicio: '2026-09-25', fim: '2026-10-10', responsavelIds: [LETICIA], ...extra });
     expect(r).toMatchObject({ ok: false, error: { code: 'VALIDATION_ERROR' } });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// criarEventoAgenda — Kanban (compromisso fica fora por padrão: KANBAN_COMPROMISSO)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('criarEventoAgenda — Kanban', () => {
+  const QUADROS = [
+    { id: 6480689026334720, name: 'Kanban Padrão', default: true, columns: [{ id: 5124495716155392, name: 'A Fazer', type: 'BACKLOG' }] },
+  ];
+
+  beforeEach(() => limparCacheQuadrosKanban());
+
+  it('sem pedido: fora do Kanban, sem consultar quadros; resultado traz kanban null', async () => {
+    const r = await criarEventoAgenda(input({ chaveExterna: undefined }));
+    expect(r.ok && r.data.kanban).toBeNull();
+    expect(mockGet).not.toHaveBeenCalledWith(expect.anything(), '/kanbans');
+    expect(chamadasAppointments()[0][2]).toMatchObject({ kanbanId: '', kanbanColumnId: '' });
+  });
+
+  it('pedido por nome: payload com o quadro e coluna resolvidos; resultado informa o destino', async () => {
+    mockGet.mockImplementation(async (_p: unknown, path: string) => (path === '/kanbans' ? QUADROS : undefined));
+    const r = await criarEventoAgenda(input({ chaveExterna: undefined, kanban: { quadro: 'Kanban Padrão' } }));
+    expect(chamadasAppointments()[0][2]).toMatchObject({
+      kanbanId: '6480689026334720',
+      kanbanColumnId: '5124495716155392',
+      kanbanDetails: { id: '6480689026334720', columnId: '5124495716155392' },
+    });
+    expect(r.ok && r.data.kanban).toEqual({
+      quadroId: '6480689026334720',
+      quadroNome: 'Kanban Padrão',
+      colunaId: '5124495716155392',
+      colunaNome: 'A Fazer',
+    });
+  });
+
+  it('quadro inexistente → VALIDATION_ERROR e nada é criado', async () => {
+    mockGet.mockImplementation(async (_p: unknown, path: string) => (path === '/kanbans' ? QUADROS : undefined));
+    const r = await criarEventoAgenda(input({ chaveExterna: undefined, kanban: { quadro: 'Sumiu' } }));
+    expect(!r.ok && r.error.code).toBe('VALIDATION_ERROR');
+    expect(chamadasAppointments()).toHaveLength(0);
   });
 });

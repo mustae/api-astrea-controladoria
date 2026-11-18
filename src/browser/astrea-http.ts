@@ -33,33 +33,6 @@ export const ANGULAR_PAGE_PATH = '/#/main/contacts';
  */
 export const WORKSPACE_PAGE_PATH = '/#/main/workspace/%5B,%5D';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers de erro de scraping
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SCRAPING_INDICATORS = [
-  'Timeout',
-  'waiting for selector',
-  'Target closed',
-  'net::ERR',
-  'Element not found',
-  'strict mode violation',
-] as const;
-
-/**
- * Retorna true se o erro indica falha de scraping DOM (seletor, timeout,
- * rede) em vez de falha de API ou autenticação.
- */
-export function isScrapingError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message;
-  return (
-    SCRAPING_INDICATORS.some((s) => msg.includes(s)) &&
-    !msg.includes('AUTH_FAILED') &&
-    !msg.includes('API_ERROR')
-  );
-}
-
 function isSessionRecoveryError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message;
@@ -84,7 +57,9 @@ function isSessionRecoveryError(err: unknown): boolean {
  */
 export async function withBrowserContext<T>(
   operation: (page: Page) => Promise<T>,
-  options: { warm?: boolean } = {},
+  // escrita: operação que cria item no Astrea — só recupera sessão (401), nunca repete
+  // timeout/aba morta, porque o Astrea pode ter gravado e a repetição duplicaria o item.
+  options: { warm?: boolean; escrita?: boolean } = {},
 ): Promise<T> {
   // warm: reutiliza a aba estacionada do pool (sem boot da SPA). Ver warm-page-state.ts.
   const page = await browserPool.acquirePage({ warm: options.warm === true });
@@ -130,6 +105,7 @@ export async function withBrowserContext<T>(
           // como uso indevido. Erros de OPERAÇÃO transitórios seguem retryable.
           if (isLoginError(err)) return false;
           if (isSessionRecoveryError(err)) return !recuperouSessao;
+          if (options.escrita) return false;
           return isRetryablePlaywrightError(err as Error);
         },
         onRetry: (err, attempt) => {
@@ -435,42 +411,3 @@ export async function getAstreaUserId(page: Page): Promise<string> {
   return userId;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// withScrapingFallback — wrapper para operações DOM com fallback LLM
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Executa `operation` com fallback automático para navegação LLM se falhar
- * por motivo de scraping (seletor, timeout, DOM não encontrado).
- */
-export async function withScrapingFallback<T>(
-  page: Page,
-  taskDescription: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await operation();
-  } catch (err) {
-    if (!isScrapingError(err)) throw err;
-
-    logger.warn(
-      { taskDescription, err: String(err) },
-      'Scraping falhou — ativando fallback LLM...',
-    );
-
-    const { llmNavigate } = await import('../utils/llm-navigator.js');
-    const { notifyScrapingIncident } = await import('../utils/mailer.js');
-
-    const { result, fixDescription } = await llmNavigate(page, taskDescription, err as Error);
-
-    await notifyScrapingIncident({
-      operation: taskDescription,
-      error: err as Error,
-      url: page.url(),
-      llmFix: fixDescription,
-      llmCodeSuggestion: `Investigar seletor em ${taskDescription}: ${(err as Error).message}`,
-    }).catch((mailErr) => logger.warn({ mailErr }, 'Falha ao enviar email de incidente'));
-
-    return result as T;
-  }
-}

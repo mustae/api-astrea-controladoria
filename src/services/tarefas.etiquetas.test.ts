@@ -9,6 +9,7 @@ vi.mock('../browser/astrea-http.js', () => ({
   getAstreaUserId: vi.fn().mockResolvedValue('6537740792659968'),
 }));
 vi.mock('../browser/navigator.js', () => ({ navigateTo: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./usuarios.service.js', () => ({ listarUsuarios: vi.fn().mockResolvedValue({ ok: true, data: [] }) }));
 
 import { criarTarefa } from './tarefas.service.js';
 import { etiquetarTarefa } from './processos-mutacoes.service.js';

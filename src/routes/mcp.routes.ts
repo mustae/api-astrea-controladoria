@@ -7,10 +7,44 @@ import { createMcpServer } from '../mcp/create-mcp-server.js';
 type McpSession = {
   server: ReturnType<typeof createMcpServer>;
   transport: StreamableHTTPServerTransport;
+  pendingPosts: number;
+  idleTimer?: ReturnType<typeof setTimeout>;
+  closing?: Promise<void>;
 };
 
 const MCP_SESSION_HEADER = 'mcp-session-id';
+const MCP_IDLE_TIMEOUT_MS = 30 * 60_000;
 const sessions = new Map<string, McpSession>();
+
+function removeSession(session: McpSession): void {
+  clearTimeout(session.idleTimer);
+  if (session.transport.sessionId) sessions.delete(session.transport.sessionId);
+}
+
+function closeSession(session: McpSession): Promise<void> {
+  if (session.closing) return session.closing;
+  removeSession(session);
+  session.closing = (async () => {
+    await session.transport.close().catch((err) => {
+      logger.warn({ err }, 'Falha ao encerrar transporte MCP HTTP');
+    });
+    await session.server.close().catch((err) => {
+      logger.warn({ err }, 'Falha ao encerrar servidor MCP HTTP');
+    });
+  })();
+  return session.closing;
+}
+
+function refreshIdleTimeout(session: McpSession): void {
+  clearTimeout(session.idleTimer);
+  const id = session.transport.sessionId;
+  if (session.pendingPosts > 0 || !id || !sessions.has(id)) return;
+  session.idleTimer = setTimeout(() => {
+    logger.info({ sessionId: id }, 'Sessao MCP HTTP encerrada por inatividade');
+    void closeSession(session);
+  }, MCP_IDLE_TIMEOUT_MS);
+  session.idleTimer.unref();
+}
 
 function getSessionId(req: Request): string | undefined {
   const header = req.headers[MCP_SESSION_HEADER];
@@ -20,32 +54,33 @@ function getSessionId(req: Request): string | undefined {
 async function createSession(): Promise<McpSession> {
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({
+    maxRequestBodySize: 1_048_576,
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (sessionId) => {
-      sessions.set(sessionId, { server, transport });
+      sessions.set(sessionId, session);
+      refreshIdleTimeout(session);
       logger.info({ sessionId }, 'Sessao MCP HTTP inicializada');
     },
     onsessionclosed: async (sessionId) => {
-      sessions.delete(sessionId);
-      await server.close().catch((err) => {
-        logger.warn({ err, sessionId }, 'Falha ao encerrar servidor MCP HTTP');
-      });
+      await closeSession(session);
       logger.info({ sessionId }, 'Sessao MCP HTTP encerrada');
     },
   });
+  const session: McpSession = { server, transport, pendingPosts: 0 };
 
-  transport.onclose = () => {
-    if (transport.sessionId) {
-      sessions.delete(transport.sessionId);
-    }
-  };
+  transport.onclose = () => removeSession(session);
 
   transport.onerror = (err) => {
     logger.warn({ err, sessionId: transport.sessionId }, 'Erro no transporte MCP HTTP');
   };
 
-  await server.connect(transport);
-  return { server, transport };
+  try {
+    await server.connect(transport);
+    return session;
+  } catch (err) {
+    await closeSession(session);
+    throw err;
+  }
 }
 
 async function resolveSession(req: Request): Promise<McpSession> {
@@ -66,8 +101,19 @@ async function resolveSession(req: Request): Promise<McpSession> {
 }
 
 async function handleMcpRequest(req: Request, res: Response): Promise<void> {
+  let session: McpSession | undefined;
   try {
-    const session = await resolveSession(req);
+    session = await resolveSession(req);
+    if (req.method === 'POST') {
+      const activeSession = session;
+      activeSession.pendingPosts++;
+      // O transporte pode retornar antes de terminar o POST; GET SSE ocioso não prende a sessão.
+      res.once('close', () => {
+        activeSession.pendingPosts--;
+        refreshIdleTimeout(activeSession);
+      });
+    }
+    refreshIdleTimeout(session);
     const parsedBody = req.method === 'POST' ? req.body : undefined;
 
     await session.transport.handleRequest(req, res, parsedBody);
@@ -85,6 +131,8 @@ async function handleMcpRequest(req: Request, res: Response): Promise<void> {
         id: null,
       });
     }
+  } finally {
+    if (session && !session.transport.sessionId) await closeSession(session);
   }
 }
 
@@ -92,12 +140,7 @@ export async function shutdownMcpSessions(): Promise<void> {
   const activeSessions = Array.from(sessions.values());
   sessions.clear();
 
-  await Promise.allSettled(
-    activeSessions.map(async ({ server, transport }) => {
-      await transport.close().catch(() => undefined);
-      await server.close().catch(() => undefined);
-    }),
-  );
+  await Promise.allSettled(activeSessions.map(closeSession));
 }
 
 const router = Router();

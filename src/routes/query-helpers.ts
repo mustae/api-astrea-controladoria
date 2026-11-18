@@ -16,6 +16,20 @@ export const idsStringArraySchema = z
   }, z.array(z.string().regex(/^\d+$/, 'ID deve ser numérico')))
   .optional();
 
+/**
+ * Quadro Kanban na criação de atividades: `false` = fora do Kanban; `quadro`/`coluna`
+ * por nome ou id (`GET /api/kanban/quadros`). Omitido = regra do tipo no .env.
+ */
+export const destinoKanbanSchema = z.union([
+  z.literal(false),
+  z
+    .object({
+      quadro: z.string().trim().min(1, 'kanban.quadro é obrigatório').max(200),
+      coluna: z.string().trim().min(1).max(200).optional(),
+    })
+    .strict(),
+]);
+
 /** "true"/"1" → true, "false"/"0" → false. */
 export const booleanQuerySchema = z
   .preprocess((val) => {

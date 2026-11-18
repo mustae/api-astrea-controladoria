@@ -16,8 +16,11 @@
 //
 // Edição = read-modify-write: o corpo do save na edição é o DTO do GET com os campos
 // alterados + alguns extras do formulário (userId, notify, kanbanId/ColumnId...).
-// Campos de kanban são OMITIDOS na criação (a UI escolhe o quadro padrão; sem eles o
-// Astrea cria fora do kanban, como já fazemos em tarefas).
+// Kanban: na criação o destino vem de kanban-destino.ts. Na edição, `kanban` troca o
+// quadro (kanbanId/kanbanColumnId novos no save) ou tira do Kanban (kanbanDetails null
+// e sem kanbanId — o "0" que a UI usa para "Nenhum" o backend recusa: "id cannot be
+// zero"). O PUT /kanbans/{id}/activities/{id}/move só move entre colunas do MESMO
+// quadro (testado em 26/10/2026).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Page } from 'playwright';
@@ -32,6 +35,10 @@ import { navigateTo } from '../browser/navigator.js';
 import { isRetryablePlaywrightError } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
 import { normalizarIdsNumericos } from './casos-query.js';
+import { camposKanban, resolverDestinoKanban, validarPedidoKanban } from './kanban-destino.js';
+import { comEtiqueta, etiquetaDaAudiencia } from './etiqueta-automatica.js';
+import { aplicarRegrasDaNatureza } from './regras-natureza.js';
+import type { KanbanAplicado, PedidoKanban } from '../models/kanban.js';
 import { listarUsuarios } from './usuarios.service.js';
 import type { ServiceError, ServiceResponse } from '../types/index.js';
 
@@ -117,6 +124,12 @@ function mapEtiquetas(tagDtos: unknown): Array<{ id: string; nome: string }> {
     : [];
 }
 
+/** Campos de kanban do save da edição: troca de quadro, saída do Kanban ou os atuais. */
+function kanbanNaEdicao(atual: Record<string, unknown>, destino: KanbanAplicado | null | undefined): Record<string, unknown> {
+  if (destino === undefined) return kanbanDaEdicao(atual);
+  return destino ? camposKanban(destino) : { kanbanDetails: null };
+}
+
 /** Extras de kanban que a UI reenvia na edição (strings, a partir de kanbanDetails). */
 function kanbanDaEdicao(atual: Record<string, unknown>): Record<string, unknown> {
   const k = atual.kanbanDetails as { id?: unknown; columnId?: unknown } | null | undefined;
@@ -133,6 +146,7 @@ async function abrir(page: Page): Promise<string> {
   return getAstreaUserId(page);
 }
 
+/** Roda DENTRO da aba: o chamador aquece o cache antes, senão o cache frio pede uma 2ª vaga do pool. */
 async function nomeDoUsuario(id: string): Promise<string> {
   try {
     const r = await listarUsuarios();
@@ -181,6 +195,8 @@ export interface CriarPrazoInput {
   responsavelId?: string;
   etiquetasIds?: string[];
   observacoes?: string;
+  /** Quadro Kanban (ver PedidoKanban); omitido = regra KANBAN_PRAZO. */
+  kanban?: PedidoKanban;
 }
 
 export interface EditarPrazoInput {
@@ -189,6 +205,15 @@ export interface EditarPrazoInput {
   responsavelId?: string;
   etiquetasIds?: string[];
   observacoes?: string;
+  /** Troca o quadro Kanban (`{ quadro, coluna? }`) ou tira do Kanban (`false`). */
+  kanban?: PedidoKanban;
+}
+
+/** Resultado de editar prazo/audiência; `kanban` só quando foi pedido. */
+export interface ResultadoEdicao {
+  id: string;
+  alterados: string[];
+  kanban?: KanbanAplicado | null;
 }
 
 export interface Prazo {
@@ -206,7 +231,9 @@ export interface Prazo {
 
 export async function criarPrazo(
   input: CriarPrazoInput,
-): Promise<ServiceResponse<{ id: string; processoId: string; titulo: string; data: string }>> {
+): Promise<
+  ServiceResponse<{ id: string; processoId: string; titulo: string; data: string; responsavelId: string; kanban: KanbanAplicado | null }>
+> {
   try {
     const processoId = idUnico(input.processoId, 'processoId');
     const titulo = input.titulo?.trim();
@@ -214,10 +241,17 @@ export async function criarPrazo(
     validar(dataValida(input.data), 'data deve ser YYYY-MM-DD');
     const tagIds = etiquetas(input.etiquetasIds) ?? [];
     const respInformado = input.responsavelId ? idUnico(input.responsavelId, 'responsavelId') : undefined;
+    validarPedidoKanban(input.kanban);
+    await listarUsuarios(); // aquece o cache fora da aba (ver nomeDoUsuario)
 
-    const id = await withBrowserContext(async (page) => {
+    const { id, kanban, responsavelId } = await withBrowserContext(async (page) => {
       const userId = await abrir(page);
-      const responsavelId = respInformado ?? userId;
+      const regras = await aplicarRegrasDaNatureza(page, processoId, tagIds, {
+        responsavel: !respInformado,
+        quadro: input.kanban === undefined,
+      });
+      const responsavelId = respInformado ?? regras.responsavelId ?? userId;
+      const kanban = await resolverDestinoKanban(page, 'prazo', input.kanban, undefined, regras.quadro);
       const resp = await astreaApiPost(page, '/deadlines/save', {
         name: titulo,
         dueDate: input.data,
@@ -240,12 +274,13 @@ export async function criarPrazo(
         userId,
         ownerId: userId,
         notify: false,
+        ...camposKanban(kanban),
       });
-      return idDaResposta(resp);
-    });
+      return { id: idDaResposta(resp), kanban, responsavelId };
+    }, { escrita: true });
 
-    logger.info({ id, processoId }, 'criarPrazo: OK');
-    return { ok: true, data: { id, processoId, titulo, data: input.data } };
+    logger.info({ id, processoId, kanban: kanban?.quadroNome ?? null }, 'criarPrazo: OK');
+    return { ok: true, data: { id, processoId, titulo, data: input.data, responsavelId, kanban } };
   } catch (err) {
     return falha(err, 'criarPrazo');
   }
@@ -254,10 +289,10 @@ export async function criarPrazo(
 export async function editarPrazo(
   id: string,
   input: EditarPrazoInput,
-): Promise<ServiceResponse<{ id: string; alterados: string[] }>> {
+): Promise<ServiceResponse<ResultadoEdicao>> {
   try {
     const prazoId = idUnico(id, 'prazoId');
-    const alterados = (['titulo', 'data', 'responsavelId', 'etiquetasIds', 'observacoes'] as const).filter(
+    const alterados = (['titulo', 'data', 'responsavelId', 'etiquetasIds', 'observacoes', 'kanban'] as const).filter(
       (k) => input[k] !== undefined,
     );
     validar(alterados.length, 'informe ao menos um campo para alterar');
@@ -265,17 +300,21 @@ export async function editarPrazo(
     if (input.data !== undefined) validar(dataValida(input.data), 'data deve ser YYYY-MM-DD');
     const tagIds = etiquetas(input.etiquetasIds);
     const resp = input.responsavelId ? idUnico(input.responsavelId, 'responsavelId') : undefined;
+    validarPedidoKanban(input.kanban);
+    if (resp) await listarUsuarios(); // aquece o cache fora da aba (ver nomeDoUsuario)
 
-    const salvo = await withBrowserContext(async (page) => {
+    const { salvo, kanban } = await withBrowserContext(async (page) => {
       const userId = await abrir(page);
+      const kanban = input.kanban === undefined ? undefined : await resolverDestinoKanban(page, 'prazo', input.kanban);
       const atual = await astreaApiGet<Record<string, unknown>>(page, `/deadlines/${prazoId}`);
+      const { kanbanId: _k, kanbanColumnId: _c, ...semKanban } = atual;
       const body: Record<string, unknown> = {
-        ...atual,
+        ...semKanban,
         userId,
         rootCaseId: atual.rootCaseId ?? null,
         deadlineDays: atual.deadlineDays ?? 'workingDays',
         alertNumTimeUnit: atual.alertNumTimeUnit ?? '',
-        ...kanbanDaEdicao(atual),
+        ...kanbanNaEdicao(atual, kanban),
         notify: false,
       };
       if (input.titulo !== undefined) body.name = input.titulo.trim();
@@ -289,10 +328,10 @@ export async function editarPrazo(
         body.tagIds = tagIds;
         delete body.tagDtos;
       }
-      return idDaResposta(await astreaApiPost(page, '/deadlines/save', body), prazoId);
+      return { salvo: idDaResposta(await astreaApiPost(page, '/deadlines/save', body), prazoId), kanban };
     });
 
-    return { ok: true, data: { id: salvo, alterados } };
+    return { ok: true, data: { id: salvo, alterados, ...(kanban !== undefined ? { kanban } : {}) } };
   } catch (err) {
     return falha(err, 'editarPrazo');
   }
@@ -384,8 +423,11 @@ export interface CriarAudienciaInput {
   observacoes?: string;
   /** Default true: recusa (CONFLICT) se o responsável já tem algo no horário. */
   verificarConflito?: boolean;
+  /** Quadro Kanban (ver PedidoKanban); omitido = regra KANBAN_AUDIENCIA. */
+  kanban?: PedidoKanban;
 }
 
+/** `kanban` troca o quadro (`{ quadro, coluna? }`) ou tira do Kanban (`false`). */
 export type EditarAudienciaInput = Partial<Omit<CriarAudienciaInput, 'processoId'>>;
 
 export interface Audiencia {
@@ -421,7 +463,17 @@ function validarHorario(inicio: string | undefined, fim: string | undefined): vo
 
 export async function criarAudiencia(
   input: CriarAudienciaInput,
-): Promise<ServiceResponse<{ id: string; processoId: string; data: string; horaInicio: string; horaFim: string }>> {
+): Promise<
+  ServiceResponse<{
+    id: string;
+    processoId: string;
+    data: string;
+    horaInicio: string;
+    horaFim: string;
+    responsavelId: string;
+    kanban: KanbanAplicado | null;
+  }>
+> {
   try {
     const processoId = idUnico(input.processoId, 'processoId');
     const titulo = input.titulo?.trim();
@@ -431,10 +483,16 @@ export async function criarAudiencia(
     const horaFim = input.horaFim ?? somarMin(input.horaInicio, DURACAO_PADRAO_MIN);
     const tagIds = etiquetas(input.etiquetasIds) ?? [];
     const respInformado = input.responsavelId ? idUnico(input.responsavelId, 'responsavelId') : undefined;
+    validarPedidoKanban(input.kanban);
+    await listarUsuarios(); // aquece o cache fora da aba (ver nomeDoUsuario)
 
-    const id = await withBrowserContext(async (page) => {
+    const { id, kanban, responsavelId } = await withBrowserContext(async (page) => {
       const userId = await abrir(page);
-      const responsavelId = respInformado ?? userId;
+      // Audiência sempre vai para o quadro do tipo (AUDIENCIAS & PERICIAS): só o responsável segue a natureza.
+      const regras = await aplicarRegrasDaNatureza(page, processoId, tagIds, { responsavel: !respInformado, quadro: false });
+      const responsavelId = respInformado ?? regras.responsavelId ?? userId;
+      const kanban = await resolverDestinoKanban(page, 'audiencia', input.kanban);
+      const tagIdsFinal = comEtiqueta(tagIds, await etiquetaDaAudiencia(page));
       if (input.verificarConflito !== false) {
         await checarConflito(page, userId, responsavelId, input.data, input.horaInicio, horaFim, null);
       }
@@ -463,17 +521,21 @@ export async function criarAudiencia(
         ownerId: userId,
         parentType: null,
         responsibleId: responsavelId,
-        tagIds,
+        tagIds: tagIdsFinal,
         comments: input.observacoes?.trim() ?? '',
         teamId: null,
         involved: [],
         reminders: [],
+        ...camposKanban(kanban),
       });
-      return idDaResposta(resp);
-    });
+      return { id: idDaResposta(resp), kanban, responsavelId };
+    }, { escrita: true });
 
-    logger.info({ id, processoId }, 'criarAudiencia: OK');
-    return { ok: true, data: { id, processoId, data: input.data, horaInicio: input.horaInicio, horaFim } };
+    logger.info({ id, processoId, kanban: kanban?.quadroNome ?? null }, 'criarAudiencia: OK');
+    return {
+      ok: true,
+      data: { id, processoId, data: input.data, horaInicio: input.horaInicio, horaFim, responsavelId, kanban },
+    };
   } catch (err) {
     return falha(err, 'criarAudiencia');
   }
@@ -482,12 +544,12 @@ export async function criarAudiencia(
 export async function editarAudiencia(
   id: string,
   input: EditarAudienciaInput,
-): Promise<ServiceResponse<{ id: string; alterados: string[] }>> {
+): Promise<ServiceResponse<ResultadoEdicao>> {
   try {
     const audId = idUnico(id, 'audienciaId');
     const campos = [
       'titulo', 'data', 'horaInicio', 'horaFim', 'responsavelId', 'forum', 'sala',
-      'endereco', 'modalidade', 'etiquetasIds', 'observacoes',
+      'endereco', 'modalidade', 'etiquetasIds', 'observacoes', 'kanban',
     ] as const;
     const alterados = campos.filter((k) => input[k] !== undefined);
     validar(alterados.length, 'informe ao menos um campo para alterar');
@@ -497,9 +559,11 @@ export async function editarAudiencia(
     if (input.horaFim !== undefined) validar(RE_HORA.test(input.horaFim), 'horaFim deve ser HH:mm');
     const tagIds = etiquetas(input.etiquetasIds);
     const resp = input.responsavelId ? idUnico(input.responsavelId, 'responsavelId') : undefined;
+    validarPedidoKanban(input.kanban);
 
-    const salvo = await withBrowserContext(async (page) => {
+    const { salvo, kanban } = await withBrowserContext(async (page) => {
       const userId = await abrir(page);
+      const kanban = input.kanban === undefined ? undefined : await resolverDestinoKanban(page, 'audiencia', input.kanban);
       const atual = await astreaApiGet<Record<string, unknown>>(page, `/hearings/${audId}`);
 
       const iniAtual = String(atual.hearingTimeStart ?? '');
@@ -519,8 +583,9 @@ export async function editarAudiencia(
         await checarConflito(page, userId, responsavelId, data, horaInicio, horaFim, Number(audId));
       }
 
+      const { kanbanId: _k, kanbanColumnId: _c, ...semKanban } = atual;
       const body: Record<string, unknown> = {
-        ...atual,
+        ...semKanban,
         userId,
         hearingDateStart: data,
         hearingDateEnd: input.data ?? atual.hearingDateEnd ?? data,
@@ -530,7 +595,7 @@ export async function editarAudiencia(
         alertTimeUnit: atual.alertTimeUnit ?? 'TUE_HOURS',
         contactTypeEnum: atual.contactTypeEnum ?? 'INTERNAL_USER',
         rootCaseId: atual.rootCaseId ?? null,
-        ...kanbanDaEdicao(atual),
+        ...kanbanNaEdicao(atual, kanban),
         shouldNotify: false,
         notify: false,
       };
@@ -542,16 +607,16 @@ export async function editarAudiencia(
       if (input.observacoes !== undefined) body.comments = input.observacoes;
       if (resp) body.responsibleId = resp;
       if (tagIds !== undefined) {
-        body.tagIds = tagIds;
+        body.tagIds = comEtiqueta(tagIds, await etiquetaDaAudiencia(page));
         delete body.tagDtos;
       }
       // Log de comentários é só leitura — não reenviar.
       delete body.commentsList;
 
-      return idDaResposta(await astreaApiPost(page, '/hearings/save', body), audId);
+      return { salvo: idDaResposta(await astreaApiPost(page, '/hearings/save', body), audId), kanban };
     });
 
-    return { ok: true, data: { id: salvo, alterados } };
+    return { ok: true, data: { id: salvo, alterados, ...(kanban !== undefined ? { kanban } : {}) } };
   } catch (err) {
     return falha(err, 'editarAudiencia');
   }

@@ -102,6 +102,27 @@ describe('withBrowserContext — política de retry', () => {
     await expect(p).resolves.toBe('ok-na-segunda');
     expect(op).toHaveBeenCalledTimes(2);
   });
+
+  it('escrita: timeout NÃO é re-tentado (o Astrea pode ter gravado; repetir duplica o item)', async () => {
+    vi.useFakeTimers();
+    const op = vi.fn().mockRejectedValue(new Error('Timeout 15000ms em gapi.client.workspace.taskListService.saveTaskWithList'));
+
+    const p = withBrowserContext(op, { escrita: true });
+    const assertion = expect(p).rejects.toThrow(/Timeout/);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+
+  it('escrita: sessão derrubada (401) ainda é recuperada — a escrita não chegou a acontecer', async () => {
+    vi.useFakeTimers();
+    const op = vi.fn().mockRejectedValueOnce(new Error('API_ERROR_401: Unauthorized')).mockResolvedValueOnce('ok');
+
+    const p = withBrowserContext(op, { escrita: true });
+    await vi.runAllTimersAsync();
+    await expect(p).resolves.toBe('ok');
+    expect(op).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('withBrowserContext — descarte e recarga da aba', () => {

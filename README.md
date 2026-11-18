@@ -103,10 +103,13 @@ Todas as rotas `/api/*` e `/mcp` requerem header `x-api-key` com o valor definid
 
 O projeto mantém o servidor MCP em `stdio` para integrações locais e também expõe um endpoint HTTP remoto em `/mcp`.
 
+Cada chamada de ferramenta aceita até 10.000 elementos (soma de itens de listas e propriedades de objetos), verificados antes da validação dos argumentos. O corpo de requisições HTTP é limitado a 1 MiB.
+
 - URL: `POST/GET/DELETE /mcp`
 - Transporte: `Streamable HTTP`
 - Header obrigatório: `x-api-key: <API_KEY>`
 - Sessão: o cliente inicializa a sessão com `POST /mcp`; o servidor devolve `Mcp-Session-Id` e o cliente reutiliza esse header nas chamadas seguintes
+- Sessões sem atividade expiram após 30 minutos. Solicitações POST em andamento aguardam a conclusão; um canal GET aberto, sozinho, não impede a expiração. Após receber 404 por sessão expirada, o cliente deve inicializar uma nova sessão.
 
 Para clientes remotos, prefira apontar para a URL interna do serviço no Coolify, por exemplo `http://api-astrea:3000/mcp`, ou para um domínio publicado se você decidir expor esse endpoint externamente.
 

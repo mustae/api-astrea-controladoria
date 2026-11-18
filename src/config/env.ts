@@ -45,7 +45,7 @@ const envSchema = z.object({
   BROWSER_HEADLESS: z
     .string()
     .transform((v) => v !== 'false')
-    .default('true'),
+    .default(true),
 
   // Configurações de sessão
   // SESSION_REUSE (agora EFETIVAMENTE lido): liga a persistência do storageState
@@ -53,7 +53,7 @@ const envSchema = z.object({
   SESSION_REUSE: z
     .string()
     .transform((v) => v !== 'false')
-    .default('true'),
+    .default(true),
   /** Caminho do arquivo de storageState; default = tmpdir/astrea-session.json. */
   SESSION_STATE_PATH: z.string().optional(),
   /** Idade máxima da sessão persistida antes de exigir re-login (default 6h). */
@@ -67,33 +67,34 @@ const envSchema = z.object({
   QUEUE_MAX_SIZE: z.coerce.number().int().min(1).max(100).default(20),
   QUEUE_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
 
-  // Tenant do Astrea (necessário para chamadas GCP Endpoints / users API)
-  ASTREA_TENANT_ID: z.string().default('6692712561442816'),
+  // Quadro Kanban padrão de cada tipo de atividade criada pela API (ver kanban-destino.ts):
+  // "padrao" (quadro marcado como padrão no Astrea), "nenhum", "Quadro" ou "Quadro > Coluna"
+  // (nome ou id). Ausente: tarefa/prazo = padrao; audiência = AUDIENCIAS & PERICIAS;
+  // compromisso = nenhum.
+  KANBAN_TAREFA: z.string().optional(),
+  KANBAN_PRAZO: z.string().optional(),
+  KANBAN_AUDIENCIA: z.string().optional(),
+  KANBAN_COMPROMISSO: z.string().optional(),
+  // Etiqueta posta em toda audiência criada (nome ou id; "nenhuma" desliga). Ausente: "Audiência".
+  ETIQUETA_AUDIENCIA: z.string().optional(),
+  // Regras pela natureza (ver regras-natureza.ts), formato "chave1,chave2=Alvo; chave3=Alvo";
+  // "nenhuma" desliga. Ausentes: as regras do escritório de 26/10/2026.
+  // Responsável padrão de prazo/audiência/tarefa pela etiqueta de área (alvo: id, e-mail ou nome do usuário).
+  RESPONSAVEL_POR_ETIQUETA: z.string().optional(),
+  // Quadro Kanban de prazo/tarefa pelo cliente do processo (alvo: "Quadro" ou "Quadro > Coluna").
+  KANBAN_POR_CLIENTE: z.string().optional(),
 
-  // LLM Fallback — suporte a Anthropic, OpenAI e Google Gemini
-  ANTHROPIC_API_KEY: z.string().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  GOOGLE_API_KEY: z.string().optional(),
-  /** Provedor LLM explícito: 'anthropic' | 'openai' | 'google'. Se omitido, detecta pela chave disponível. */
-  LLM_PROVIDER: z.enum(['anthropic', 'openai', 'google']).optional(),
-  /** Modelo OpenAI a usar no fallback (padrão: gpt-4o-mini). */
-  OPENAI_MODEL: z.string().optional(),
-  /** Modelo Google a usar no fallback (padrão: gemini-1.5-flash). */
-  GOOGLE_MODEL: z.string().optional(),
+  // Tenant do Astrea (necessário para chamadas GCP Endpoints / users API). Sem default:
+  // um tenant de outro escritório só aparecia depois, como 403.
+  ASTREA_TENANT_ID: z.string().regex(/^\d+$/, 'ASTREA_TENANT_ID é obrigatório (id numérico do escritório no Astrea)'),
 
-  // Notificação de incidentes por email
-  DEVELOPER_EMAIL: z.string().email().default('estevaoterci@gmail.com'),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().default(587),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
 });
 
 function parseEnv() {
   const result = envSchema.safeParse(process.env);
 
   if (!result.success) {
-    const errors = result.error.errors
+    const errors = result.error.issues
       .map((e) => `  - ${e.path.join('.')}: ${e.message}`)
       .join('\n');
     throw new Error(`Configuração de ambiente inválida:\n${errors}`);

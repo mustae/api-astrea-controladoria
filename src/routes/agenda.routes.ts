@@ -11,6 +11,7 @@ import {
   remarcarEventoAgenda,
 } from '../services/agenda-eventos.service.js';
 import type { ApiResponse, ApiError, ServiceError } from '../types/index.js';
+import { destinoKanbanSchema } from './query-helpers.js';
 
 const router = Router();
 
@@ -128,6 +129,7 @@ const criarEventoSchema = z
     criarAtendimento: z.boolean().optional(),
     verificarConflito: z.boolean().optional(),
     etiquetasIds: z.array(idAstrea).max(20).optional(),
+    kanban: destinoKanbanSchema.optional(),
   })
   .strict()
   .refine((b) => b.diaTodo === true || !!b.horaInicio, {

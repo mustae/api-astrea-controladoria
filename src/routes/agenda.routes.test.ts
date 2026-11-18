@@ -272,6 +272,16 @@ describe('POST /api/agenda/eventos', () => {
     expect(mockCriar).toHaveBeenCalledWith(expect.objectContaining({ titulo: CORPO.titulo, contato: CORPO.contato }));
   });
 
+  it('kanban chega ao service; kanban inválido → 400', async () => {
+    mockCriar.mockResolvedValueOnce(ok(EVENTO_OK));
+    const kanban = { quadro: 'Kanban Padrão' };
+    const res = await request(app).post('/api/agenda/eventos').send({ ...CORPO, kanban });
+    expect(res.status).toBe(201);
+    expect(mockCriar).toHaveBeenCalledWith(expect.objectContaining({ kanban }));
+    const res2 = await request(app).post('/api/agenda/eventos').send({ ...CORPO, kanban: { quadro: '' } });
+    expect(res2.status).toBe(400);
+  });
+
   it('200 quando reaproveita (mesma chaveExterna)', async () => {
     mockCriar.mockResolvedValueOnce(ok({ ...EVENTO_OK, reaproveitado: true }));
     const res = await request(app).post('/api/agenda/eventos').send(CORPO);

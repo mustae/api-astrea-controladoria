@@ -165,6 +165,13 @@ describe('writeSessionStateAtomic', () => {
     // O arquivo temporário não fica para trás.
     expect(Object.keys(fs.files)).toEqual(['/tmp/x.json']);
   });
+
+  it('grava só para o dono (0600): o arquivo tem cookies/token da sessão do escritório', () => {
+    const fs = makeFakeFs();
+    const writeSpy = vi.spyOn(fs, 'writeFileSync');
+    writeSessionStateAtomic(storageState(), NOW, { fs, path: '/tmp/x.json' });
+    expect(writeSpy).toHaveBeenCalledWith('/tmp/x.json.tmp', expect.any(String), { mode: 0o600 });
+  });
 });
 
 describe('descartarSessionState', () => {

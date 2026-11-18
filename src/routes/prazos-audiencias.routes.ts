@@ -14,7 +14,7 @@ import {
   excluirAudiencia,
   excluirPrazo,
 } from '../services/prazos-audiencias.service.js';
-import { h, invalido, responder } from './query-helpers.js';
+import { destinoKanbanSchema, h, invalido, responder } from './query-helpers.js';
 
 const router = Router();
 
@@ -29,9 +29,9 @@ const prazoBase = {
   etiquetasIds: z.array(id).max(20).optional(),
   observacoes: z.string().max(4000).optional(),
 };
-const criarPrazoSchema = z.object(prazoBase).strict();
+const criarPrazoSchema = z.object({ ...prazoBase, kanban: destinoKanbanSchema.optional() }).strict();
 const editarPrazoSchema = z
-  .object({ ...prazoBase, titulo: prazoBase.titulo.optional(), data: data.optional() })
+  .object({ ...prazoBase, titulo: prazoBase.titulo.optional(), data: data.optional(), kanban: destinoKanbanSchema.optional() })
   .strict();
 
 const audienciaBase = {
@@ -48,13 +48,14 @@ const audienciaBase = {
   observacoes: z.string().max(4000).optional(),
   verificarConflito: z.boolean().optional(),
 };
-const criarAudienciaSchema = z.object(audienciaBase).strict();
+const criarAudienciaSchema = z.object({ ...audienciaBase, kanban: destinoKanbanSchema.optional() }).strict();
 const editarAudienciaSchema = z
   .object({
     ...audienciaBase,
     titulo: audienciaBase.titulo.optional(),
     data: data.optional(),
     horaInicio: hora.optional(),
+    kanban: destinoKanbanSchema.optional(),
   })
   .strict();
 

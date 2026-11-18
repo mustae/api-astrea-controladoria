@@ -82,6 +82,20 @@ import {
 import type { ServiceResponse } from '../types/index.js';
 
 /** Resposta MCP padrão para um ServiceResponse (erro → isError com código). */
+/** Quadro Kanban em criar_tarefa/prazo/audiência/evento (ver kanban-destino.ts). */
+const pedidoKanbanMcp = z.union([z.literal(false), z.object({ quadro: z.string(), coluna: z.string().optional() })]);
+const kanbanMcp = pedidoKanbanMcp
+  .optional()
+  .describe(
+    'Quadro da Gestão Kanban: `{ quadro, coluna? }` por nome ou id (`listar_quadros_kanban`; sem coluna = primeira coluna do quadro), ou `false` para ficar fora. Omitido = regra do escritório (tarefa/prazo: "Demandas do SINDISMED" se o cliente do processo for o SINDISMED, senão o quadro padrão; audiência: AUDIENCIAS & PERICIAS; compromisso: fora). Só informe se tiver instrução para usar outro quadro. A resposta informa o `kanban` usado.',
+  );
+/** Troca de quadro em editar_prazo/editar_audiencia/atualizar_tarefa. */
+const kanbanEdicaoMcp = pedidoKanbanMcp
+  .optional()
+  .describe(
+    'Move para outro quadro da Gestão Kanban: `{ quadro, coluna? }` por nome ou id (sem coluna = primeira coluna), ou `false` para tirar do Kanban. Omitido = não mexe no Kanban. Para mudar só de coluna no mesmo quadro também serve `mover_atividade_kanban`.',
+  );
+
 function mcpResultado<T>(result: ServiceResponse<T>) {
   if (!result.ok) {
     const detalhes = result.error.details ? `\n${JSON.stringify(result.error.details, null, 2)}` : '';
@@ -97,7 +111,7 @@ export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: 'astrea-mcp',
     version: '1.0.0',
-  });
+  }, { maxToolInputElements: 10_000 });
 
   server.tool(
     'listar_clientes',
@@ -467,7 +481,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'criar_prazo',
-    'Cria um PRAZO processual (data fatal) num processo do Astrea — aparece na agenda como prazo, separado de tarefas. `data` YYYY-MM-DD; `responsavelId` default = usuário da integração (descubra com `listar_usuarios`); `etiquetasIds` opcional (uso "DEADLINE"). Retorna o `id`.',
+    'Cria um PRAZO processual (data fatal) num processo do Astrea — aparece na agenda como prazo, separado de tarefas. `data` YYYY-MM-DD; `etiquetasIds` opcional (uso "DEADLINE"). Sem `responsavelId`, o responsável sai da etiqueta de área do item ou do processo (Trabalhista → Charles, Previdenciário → Mariane, Cível/Família/Tributário/Criminal → Diego); sem área, o usuário da integração. Processo do cliente SINDISMED entra no quadro "Demandas do SINDISMED". Retorna `id`, `responsavelId` e `kanban`.',
     {
       processoId: z.string(),
       titulo: z.string().min(1),
@@ -475,6 +489,7 @@ export function createMcpServer(): McpServer {
       responsavelId: z.string().optional(),
       etiquetasIds: z.array(z.string()).max(20).optional(),
       observacoes: z.string().optional(),
+      kanban: kanbanMcp,
     },
     async (input) => mcpResultado(await criarPrazo(input)),
   );
@@ -488,7 +503,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'editar_prazo',
-    'Edita um prazo existente (título, data, responsável, etiquetas, observações). Só o que for informado muda. `etiquetasIds` SUBSTITUI as etiquetas atuais ([] remove todas).',
+    'Edita um prazo existente (título, data, responsável, etiquetas, observações, quadro Kanban). Só o que for informado muda. `etiquetasIds` SUBSTITUI as etiquetas atuais ([] remove todas).',
     {
       prazoId: z.string(),
       titulo: z.string().min(1).optional(),
@@ -496,6 +511,7 @@ export function createMcpServer(): McpServer {
       responsavelId: z.string().optional(),
       etiquetasIds: z.array(z.string()).max(20).optional(),
       observacoes: z.string().optional(),
+      kanban: kanbanEdicaoMcp,
     },
     async ({ prazoId, ...campos }) => mcpResultado(await editarPrazo(prazoId, campos)),
   );
@@ -516,7 +532,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'criar_audiencia',
-    'Cria uma AUDIÊNCIA num processo do Astrea: `data` (YYYY-MM-DD), `horaInicio`/`horaFim` (HH:mm; fim default +30 min), `forum`, `sala`, `endereco` (ou link, se `modalidade: "remoto"`), `responsavelId` (default usuário da integração), `etiquetasIds`, `observacoes`. Por padrão recusa com CONFLICT se o responsável já tiver algo no horário (`verificarConflito: false` para forçar).',
+    'Cria uma AUDIÊNCIA num processo do Astrea: `data` (YYYY-MM-DD), `horaInicio`/`horaFim` (HH:mm; fim default +30 min), `forum`, `sala`, `endereco` (ou link, se `modalidade: "remoto"`), `responsavelId`, `etiquetasIds`, `observacoes`. Sem `responsavelId`, o responsável sai da etiqueta de área do item ou do processo (Trabalhista → Charles, Previdenciário → Mariane, Cível/Família/Tributário/Criminal → Diego); sem área, o usuário da integração. A etiqueta "Audiência" é acrescentada automaticamente e a audiência entra no quadro AUDIENCIAS & PERICIAS. Por padrão recusa com CONFLICT se o responsável já tiver algo no horário (`verificarConflito: false` para forçar).',
     {
       processoId: z.string(),
       titulo: z.string().min(1),
@@ -531,6 +547,7 @@ export function createMcpServer(): McpServer {
       etiquetasIds: z.array(z.string()).max(20).optional(),
       observacoes: z.string().optional(),
       verificarConflito: z.boolean().optional(),
+      kanban: kanbanMcp,
     },
     async (input) => mcpResultado(await criarAudiencia(input)),
   );
@@ -544,7 +561,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'editar_audiencia',
-    'Edita/remarca uma audiência. Só o que for informado muda; ao mudar só `horaInicio`, a duração é mantida. Checa conflito de agenda ao mudar data/horário/responsável (desligue com `verificarConflito: false`). `etiquetasIds` SUBSTITUI as atuais.',
+    'Edita/remarca uma audiência. Só o que for informado muda; ao mudar só `horaInicio`, a duração é mantida. Checa conflito de agenda ao mudar data/horário/responsável (desligue com `verificarConflito: false`). `etiquetasIds` SUBSTITUI as atuais (a etiqueta "Audiência" é mantida). `kanban` troca o quadro.',
     {
       audienciaId: z.string(),
       titulo: z.string().min(1).optional(),
@@ -559,6 +576,7 @@ export function createMcpServer(): McpServer {
       etiquetasIds: z.array(z.string()).max(20).optional(),
       observacoes: z.string().optional(),
       verificarConflito: z.boolean().optional(),
+      kanban: kanbanEdicaoMcp,
     },
     async ({ audienciaId, ...campos }) => mcpResultado(await editarAudiencia(audienciaId, campos)),
   );
@@ -623,11 +641,12 @@ export function createMcpServer(): McpServer {
     {
       titulo: z.string(),
       casoId: z.string().optional(),
-      responsavelId: z.string(),
+      responsavelId: z.string().optional().describe('Sem `responsavelId`, o responsável sai da etiqueta de área do item ou do processo (Trabalhista → Charles, Previdenciário → Mariane, Cível/Família/Tributário/Criminal → Diego); sem área, o usuário da integração.'),
       listaId: z.string().optional(),
       prazo: z.string().optional(),
       prioridade: z.number().optional(),
       etiquetasIds: z.array(z.string()).max(20).optional(),
+      kanban: kanbanMcp,
     },
     async (input) => {
       const result = await criarTarefa(input);
@@ -644,7 +663,7 @@ export function createMcpServer(): McpServer {
 
   server.tool(
     'atualizar_tarefa',
-    'Atualiza uma tarefa existente.',
+    'Atualiza uma tarefa existente (título, status, prazo, responsável, prioridade, quadro Kanban). Etiquetas e Kanban atuais são mantidos se não informados. Kanban exige que a tarefa tenha prazo.',
     {
       id: z.string(),
       titulo: z.string().optional(),
@@ -652,6 +671,7 @@ export function createMcpServer(): McpServer {
       prazo: z.string().optional(),
       responsavelId: z.string().optional(),
       prioridade: z.number().optional(),
+      kanban: kanbanEdicaoMcp,
     },
     async (input) => {
       const { id, ...updateInput } = input;
@@ -1139,6 +1159,7 @@ export function createMcpServer(): McpServer {
       criarAtendimento: z.boolean().optional(),
       verificarConflito: z.boolean().optional(),
       etiquetasIds: z.array(z.string()).max(20).optional().describe('Etiquetas (ids de `listar_etiquetas`, uso "compromissos").'),
+      kanban: kanbanMcp,
     },
     async (input) => mcpResultado(await criarEventoAgenda(input)),
   );

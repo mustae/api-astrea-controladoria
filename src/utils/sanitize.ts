@@ -2,6 +2,11 @@
  * Utilitários para sanitização e normalização de dados extraídos via scraping.
  */
 
+/** Sem acento, sem espaço nas pontas e em minúsculas — para comparar nomes vindos do Astrea. */
+export function semAcento(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+}
+
 /** Remove espaços extras e normaliza quebras de linha. */
 export function cleanText(text: string | null | undefined): string {
   if (!text) return '';

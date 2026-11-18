@@ -15,6 +15,8 @@
  */
 
 import type { CriarEventoAgendaInput, RemarcarEventoAgendaInput } from '../models/index.js';
+import { camposKanban } from './kanban-destino.js';
+import type { KanbanAplicado } from '../models/kanban.js';
 
 export interface ContextoPayload {
   /** Usuário da sessão (automação) — vira owner/userId. */
@@ -25,6 +27,8 @@ export interface ContextoPayload {
   nomes?: Record<string, string>;
   /** Etiquetas como objetos completos (o formulário envia `tags: [obj]`; capturado 21/10/2026). */
   tags?: Array<Record<string, unknown>>;
+  /** Quadro/coluna do Kanban já resolvidos (kanban-destino.ts); ausente = fora do Kanban. */
+  kanban?: KanbanAplicado | null;
 }
 
 export const DURACAO_PADRAO_MIN = 30;
@@ -124,6 +128,7 @@ export function montarPayloadAppointment(
     kanbanId: '',
     kanbanColumnId: '',
     kanbanDetails: { id: null, columnId: null },
+    ...camposKanban(ctx.kanban ?? null),
   };
 }
 

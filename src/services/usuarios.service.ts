@@ -116,6 +116,8 @@ export async function listarUsuarios(): Promise<ServiceResponse<Usuario[]>> {
 
 export async function obterUsuarioLogado(): Promise<ServiceResponse<Usuario>> {
   try {
+    // Aquece o cache fora da aba: listarUsuarios() frio dentro dela pediria uma 2ª vaga do pool.
+    await listarUsuarios();
     const usuario = await withBrowserContext(async (page) => {
       await navigateTo(page, WORKSPACE_PAGE_PATH);
       const userId = await getAstreaUserId(page);

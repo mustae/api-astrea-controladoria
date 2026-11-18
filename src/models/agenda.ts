@@ -1,3 +1,5 @@
+import type { KanbanAplicado, PedidoKanban } from './kanban.js';
+
 export type TipoEventoAgenda = 'prazo' | 'tarefa' | 'atendimento' | 'audiencia';
 
 /** `cancelado` = status CANCELED do Astrea (evento cancelado sem ser excluído). */
@@ -126,6 +128,8 @@ export interface CriarEventoAgendaInput {
   verificarConflito?: boolean;
   /** IDs de etiquetas (`listar_etiquetas`, uso "compromissos"). */
   etiquetasIds?: string[];
+  /** Quadro Kanban (ver PedidoKanban). Por padrão compromissos ficam fora (KANBAN_COMPROMISSO). */
+  kanban?: PedidoKanban;
 }
 
 export interface EventoAgendaCriado {
@@ -151,6 +155,8 @@ export interface ResultadoCriacaoEvento {
   /** true = o evento existe, mas alguma etapa acessória (contato/atendimento/vínculo) falhou. */
   parcial: boolean;
   erros: string[];
+  /** Quadro/coluna do Kanban em que o compromisso entrou (null = fora; ausente se reaproveitado). */
+  kanban?: KanbanAplicado | null;
 }
 
 export interface RemarcarEventoAgendaInput {

@@ -48,6 +48,8 @@ import {
 import { listarUsuarios } from './usuarios.service.js';
 import { carregarEtiquetasBrutas } from './etiquetas.service.js';
 import { InflightTtlCache, type InflightCacheStats } from '../utils/cache.js';
+import { resolverDestinoKanban, validarPedidoKanban } from './kanban-destino.js';
+import type { KanbanAplicado, PedidoKanban } from '../models/kanban.js';
 import { isRetryablePlaywrightError } from '../utils/retry.js';
 import { logger } from '../utils/logger.js';
 import type {
@@ -169,6 +171,9 @@ export function classificarErro(err: unknown): ServiceError {
   }
   if (/^SEM_ID:/.test(message)) {
     return { code: 'API_ERROR', message, retryable: true };
+  }
+  if (/^VALIDATION_ERROR:/.test(message)) {
+    return { code: 'VALIDATION_ERROR', message: message.replace(/^VALIDATION_ERROR:\s*/, ''), retryable: false };
   }
   return { code: 'API_ERROR', message, retryable: isRetryablePlaywrightError(err) };
 }
@@ -310,6 +315,7 @@ interface CriacaoNormalizada {
   criarAtendimento: boolean;
   verificarConflito: boolean;
   etiquetasIds: string[];
+  kanban?: PedidoKanban;
 }
 
 function horaParaMin(h: string): number {
@@ -346,6 +352,11 @@ function validarCriacao(input: CriarEventoAgendaInput): string | null {
   if (input.casoId !== undefined && !RE_ID_ASTREA.test(String(input.casoId))) return 'casoId: ID inválido do Astrea';
   const etiquetaInvalida = (input.etiquetasIds ?? []).find((id) => !RE_ID_ASTREA.test(String(id)));
   if (etiquetaInvalida !== undefined) return `etiquetasIds: ID inválido "${etiquetaInvalida}"`;
+  try {
+    validarPedidoKanban(input.kanban);
+  } catch (err) {
+    return (err as Error).message.replace(/^VALIDATION_ERROR:\s*/, '');
+  }
   return null;
 }
 
@@ -379,6 +390,7 @@ function normalizarCriacao(input: CriarEventoAgendaInput): CriacaoNormalizada {
     criarAtendimento: contato ? input.criarAtendimento !== false : false,
     verificarConflito: input.verificarConflito !== false,
     etiquetasIds: [...new Set((input.etiquetasIds ?? []).map(String))],
+    kanban: input.kanban,
   };
 }
 
@@ -565,13 +577,18 @@ async function criarEventoNormalizado(n: CriacaoNormalizada): Promise<ServiceRes
       const userId = await getAstreaUserId(page);
       const eventosDia = await lerDia(page, userId, n.data, n.responsavelId);
 
-      const montar = (evento: EventoAgendaCriado, reaproveitado: boolean): ResultadoCriacaoEvento => ({
+      const montar = (
+        evento: EventoAgendaCriado,
+        reaproveitado: boolean,
+        kanban?: KanbanAplicado | null,
+      ): ResultadoCriacaoEvento => ({
         evento,
         reaproveitado,
         contato: estado.contato ?? null,
         atendimento: estado.atendimento ?? null,
         parcial: estado.erros.length > 0,
         erros: [...estado.erros],
+        ...(kanban !== undefined ? { kanban } : {}),
       });
 
       if (n.chaveExterna) {
@@ -585,8 +602,9 @@ async function criarEventoNormalizado(n: CriacaoNormalizada): Promise<ServiceRes
         }
       }
 
-      // Etiquetas: resolvidas ANTES de qualquer escrita (id inexistente → VALIDATION_ERROR).
+      // Etiquetas e Kanban: resolvidos ANTES de qualquer escrita (inexistente → VALIDATION_ERROR).
       const tags = await carregarEtiquetasBrutas(page, n.etiquetasIds);
+      const kanban = await resolverDestinoKanban(page, 'compromisso', n.kanban);
 
       if (n.verificarConflito) {
         const conflitos = conflitosNoHorario(eventosDia, n.responsavelId, n.data, n.horaInicio, n.horaFim);
@@ -614,7 +632,7 @@ async function criarEventoNormalizado(n: CriacaoNormalizada): Promise<ServiceRes
       const salvar = async (caseId: string | null): Promise<string> => {
         const payload = montarPayloadAppointment(
           { ...n, horaInicio: n.horaInicio, horaFim: n.horaFim, envolvidosIds: n.envolvidosIds },
-          { userId, caseId, nomes, tags },
+          { userId, caseId, nomes, tags, kanban },
         );
         estado.tentouCriar = true;
         try {
@@ -680,8 +698,9 @@ async function criarEventoNormalizado(n: CriacaoNormalizada): Promise<ServiceRes
           status: 'pendente',
         },
         false,
+        kanban,
       );
-    }, { warm: true });
+    }, { warm: true, escrita: true });
 
     invalidarDisponibilidadeCache();
     logger.info(

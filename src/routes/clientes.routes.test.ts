@@ -195,12 +195,12 @@ describe('GET /api/clientes/aniversariantes', () => {
   it('200 com lista enriquecida (dataNascimento+cpfCnpj) quando mes válido', async () => {
     const lista: Cliente[] = [
       {
-        id: '5312778616111104',
-        nome: 'Airton Florentino',
-        url: 'https://astrea.net.br/#/main/contacts/detail/5312778616111104/data',
-        cpfCnpj: '003.262.217-19',
-        dataNascimento: '1966-06-14',
-        telefone: '(27) 99924-0611',
+        id: '1000000000000001',
+        nome: 'Fulano de Teste',
+        url: 'https://astrea.net.br/#/main/contacts/detail/1000000000000001/data',
+        cpfCnpj: '123.456.789-09',
+        dataNascimento: '1970-01-01',
+        telefone: '(27) 90000-0000',
         tipo: 'pessoa_fisica',
       },
     ];

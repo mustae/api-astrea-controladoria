@@ -6,6 +6,7 @@ import {
   sanitizeId,
   tableToObjects,
   redactSensitive,
+  semAcento,
 } from './sanitize.js';
 
 describe('cleanText', () => {
@@ -147,5 +148,12 @@ describe('redactSensitive', () => {
   it('ignora campos não presentes', () => {
     const input = { foo: 'bar' };
     expect(redactSensitive(input)).toEqual({ foo: 'bar' });
+  });
+});
+
+describe('semAcento', () => {
+  it('tira acento, espaços nas pontas e caixa (comparação de nomes do Astrea)', () => {
+    expect(semAcento('  Previdenciário ')).toBe('previdenciario');
+    expect(semAcento('FAMÍLIA & Cível')).toBe('familia & civel');
   });
 });

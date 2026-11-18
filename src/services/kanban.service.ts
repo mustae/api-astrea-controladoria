@@ -55,6 +55,7 @@ interface RawActivity {
   caseTitle?: string;
   completeLawsuit?: string;
   commentCount?: number;
+  tagIds?: Array<number | string>;
   createdDate?: number;
   priority?: string;
   kanbanDetails?: { id?: number | string; columnId?: number | string };
@@ -128,6 +129,7 @@ function mapAtividade(a: RawActivity): AtividadeKanban {
     casoTitulo: a.caseTitle ?? a.completeLawsuit ?? undefined,
     urlCaso: casoId ? urlCaso(casoId) : undefined,
     comentariosCount: a.commentCount ?? 0,
+    etiquetasIds: Array.isArray(a.tagIds) ? a.tagIds.map(String) : [],
     quadroId: a.kanbanDetails?.id != null ? String(a.kanbanDetails.id) : '',
     colunaId: a.kanbanDetails?.columnId != null ? String(a.kanbanDetails.columnId) : '',
     criadoEm: epochMsToISO(a.createdDate),

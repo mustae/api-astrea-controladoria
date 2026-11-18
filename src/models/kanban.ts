@@ -46,6 +46,8 @@ export interface AtividadeKanban {
   /** URL direta do caso/processo no app do Astrea (quando há casoId). */
   urlCaso?: string;
   comentariosCount: number;
+  /** Etiquetas do card (ids de `listar_etiquetas`). */
+  etiquetasIds: string[];
   /** ID do quadro Kanban onde a atividade está. */
   quadroId: string;
   /** ID da coluna atual da atividade dentro do quadro. */
@@ -87,4 +89,20 @@ export interface QuadroAtividades {
 export interface MoverAtividadeInput {
   /** ID da coluna destino dentro do mesmo quadro. */
   colunaDestinoId: string;
+}
+
+/**
+ * Onde incluir uma atividade nova (tarefa, prazo, audiência, compromisso) na
+ * Gestão Kanban: `false` = fora do Kanban; `quadro`/`coluna` por nome ou id de
+ * `listar_quadros_kanban` (sem coluna = primeira coluna "a fazer"). Omitido = a
+ * regra do tipo (KANBAN_TAREFA, KANBAN_PRAZO, ... no .env).
+ */
+export type PedidoKanban = false | { quadro: string; coluna?: string };
+
+/** Quadro e coluna em que a atividade foi incluída (devolvido na criação). */
+export interface KanbanAplicado {
+  quadroId: string;
+  quadroNome: string;
+  colunaId: string;
+  colunaNome: string;
 }

@@ -422,7 +422,7 @@ export async function criarAndamento(
         '/histories/v1/saveHistoricalByCase',
         montarAndamentoPayload({ ...input, processoId }, userId),
       );
-    });
+    }, { escrita: true });
     if (!resp?.id) throw new Error('API_ERROR: Astrea não retornou o id do andamento');
 
     return {

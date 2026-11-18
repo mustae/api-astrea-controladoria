@@ -645,7 +645,7 @@ export async function criarAtendimento(
     const atendimento = await withBrowserContext(async (page) => {
       await navigateTo(page, ANGULAR_PAGE_PATH);
       return criarAtendimentoNaPagina(page, input, attachedCase);
-    });
+    }, { escrita: true });
 
     return { ok: true, data: atendimento };
   } catch (err) {

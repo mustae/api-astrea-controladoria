@@ -48,7 +48,7 @@ Migração para os endpoints REST **estáveis** (os mesmos de `listar_clientes` 
 ### Verificação em prod
 
 `GET /api/clientes/aniversariantes?mes=7` → **107 contatos** enriquecidos
-(ex.: `Adriana Florentina Mendes | nasc=1974-07-04 | cpf=042.328.197-62`).
+(cada um com `nome | nasc=AAAA-MM-DD | cpf=…`).
 
 ---
 

@@ -18,6 +18,7 @@ process.env['API_KEY'] =
 process.env['API_KEYS'] =
   process.env['API_KEYS'] ??
   'test-list-key-alpha-with-32-plus-chars-aaaa:alpha,test-list-key-beta-with-32-plus-chars-bbbb';
+process.env['ASTREA_TENANT_ID'] = process.env['ASTREA_TENANT_ID'] ?? '1000000000000000';
 process.env['NODE_ENV'] = 'test';
 process.env['PORT'] = '3000';
 process.env['BROWSER_POOL_SIZE'] = '1';

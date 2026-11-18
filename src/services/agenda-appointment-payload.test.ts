@@ -97,6 +97,20 @@ describe('montarPayloadAppointment — contrato do formulário do Astrea (bundle
     expect(p.involvedWithNames).toEqual({ [DIUIANE]: 'Diuiane' });
   });
 
+  it('kanban resolvido no contexto → kanbanId/kanbanColumnId/kanbanDetails; sem ele ficam vazios', () => {
+    const k = { quadroId: '6480689026334720', quadroNome: 'Kanban Padrão', colunaId: '5124495716155392', colunaNome: 'A Fazer' };
+    expect(montarPayloadAppointment(base, { userId: AUTOMACAO, kanban: k })).toMatchObject({
+      kanbanId: k.quadroId,
+      kanbanColumnId: k.colunaId,
+      kanbanDetails: { id: k.quadroId, columnId: k.colunaId },
+    });
+    expect(montarPayloadAppointment(base, { userId: AUTOMACAO })).toMatchObject({
+      kanbanId: '',
+      kanbanColumnId: '',
+      kanbanDetails: { id: null, columnId: null },
+    });
+  });
+
   it('caseId do contexto tem precedência sobre o do input', () => {
     expect(montarPayloadAppointment({ ...base, casoId: '111' }, { userId: AUTOMACAO }).caseId).toBe('111');
     expect(montarPayloadAppointment({ ...base, casoId: '111' }, { userId: AUTOMACAO, caseId: '222' }).caseId).toBe('222');

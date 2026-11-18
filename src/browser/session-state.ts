@@ -48,7 +48,7 @@ export interface PersistedSession {
 /** Subconjunto de `node:fs` que o módulo usa — injetável em teste. */
 export interface SessionFs {
   readFileSync(path: string, encoding: 'utf-8'): string;
-  writeFileSync(path: string, data: string): void;
+  writeFileSync(path: string, data: string, options: { mode: number }): void;
   renameSync(oldPath: string, newPath: string): void;
 }
 
@@ -99,7 +99,8 @@ export function writeSessionStateAtomic(
     }
   }
 
-  fs.writeFileSync(tmp, JSON.stringify(payload));
+  // 0600: cookies/token da sessão do escritório; ninguém além do dono do processo lê.
+  fs.writeFileSync(tmp, JSON.stringify(payload), { mode: 0o600 });
   fs.renameSync(tmp, path);
 }
 

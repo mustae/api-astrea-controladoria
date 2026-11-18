@@ -16,6 +16,9 @@ import type {
   Comentario,
 } from '../models/index.js';
 import type { FiltrosTarefa, ServiceResponse, PaginationMeta } from '../types/index.js';
+import { camposKanban, resolverDestinoKanban, validarPedidoKanban } from './kanban-destino.js';
+import { aplicarRegrasDaNatureza } from './regras-natureza.js';
+import { listarUsuarios } from './usuarios.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos internos GCP
@@ -264,6 +267,16 @@ export async function listarTarefas(filtros?: FiltrosTarefa): Promise<ServiceRes
 
 export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceResponse<Tarefa>> {
   try {
+    validarPedidoKanban(input.kanban);
+    // A UI do Astrea só põe no quadro tarefa com data (useKanbanFormUpdater).
+    if (input.kanban && !input.prazo) throw new Error('VALIDATION_ERROR: kanban exige prazo na tarefa');
+  } catch (err) {
+    return { ok: false, error: { message: (err as Error).message.replace(/^VALIDATION_ERROR:\s*/, ''), code: 'VALIDATION_ERROR', retryable: false } };
+  }
+  try {
+    // A regra de responsável lê os usuários dentro da aba: aquece o cache antes, senão o
+    // cache frio pede uma 2ª vaga do pool e criações paralelas travam umas às outras.
+    await listarUsuarios();
     const tarefa = await withBrowserContext(async (page) => {
       await navigateTo(page, WORKSPACE_PAGE_PATH);
 
@@ -279,12 +292,22 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceRespo
         listId = String(first.id ?? first.taskListId ?? '');
       }
 
+      const regras = await aplicarRegrasDaNatureza(page, input.casoId, input.etiquetasIds ?? [], {
+        responsavel: !input.responsavelId,
+        quadro: !!input.prazo && input.kanban === undefined,
+      });
+      const responsavelId = String(input.responsavelId ?? regras.responsavelId ?? userId);
+      // Sem prazo a tarefa não entra no Kanban: a regra padrão (KANBAN_TAREFA) não se aplica.
+      const kanban = input.prazo
+        ? await resolverDestinoKanban(page, 'tarefa', input.kanban, undefined, regras.quadro)
+        : null;
+
       const createDate = new Date().toISOString();
 
       const payload = {
         taskInfoDTO: {
           description: input.titulo,
-          responsibleId: String(input.responsavelId),
+          responsibleId: responsavelId,
           createDate,
           ownerId: String(userId),
           ...(input.prazo ? { dueDate: input.prazo } : {}),
@@ -292,10 +315,11 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceRespo
           ...(input.casoId ? { caseId: input.casoId } : {}),
           // Formato capturado na UI em 21/10/2026: tagIds como strings.
           ...(input.etiquetasIds?.length ? { tagIds: input.etiquetasIds.map(String) } : {}),
+          ...camposKanban(kanban),
         },
         idCurrentTaskList: listId,
         idUser: String(userId),
-        responsibleId: String(input.responsavelId),
+        responsibleId: responsavelId,
       };
 
       const res = await gapiCall<any>(
@@ -312,7 +336,7 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceRespo
         description: input.titulo,
         done: false,
         dueDate: input.prazo,
-        responsibleId: input.responsavelId,
+        responsibleId: responsavelId,
         ownerId: userId,
         createDate,
         currentListId: listId,
@@ -321,16 +345,20 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceRespo
         ...(res && typeof res === 'object' ? res : {}),
       };
 
-      return mapGcpTaskToTarefa(savedTask);
-    });
+      return { ...mapGcpTaskToTarefa(savedTask), kanban };
+    }, { escrita: true });
 
     return { ok: true, data: tarefa };
   } catch (err) {
     logger.error({ err }, 'Erro em criarTarefa');
+    const message = err instanceof Error ? err.message : 'Erro desconhecido';
+    if (message.startsWith('VALIDATION_ERROR')) {
+      return { ok: false, error: { message: message.replace(/^VALIDATION_ERROR:\s*/, ''), code: 'VALIDATION_ERROR', retryable: false } };
+    }
     return {
       ok: false,
       error: {
-        message: err instanceof Error ? err.message : 'Erro desconhecido',
+        message,
         code: 'API_ERROR',
         retryable: isRetryablePlaywrightError(err),
       },
@@ -342,10 +370,28 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<ServiceRespo
 // atualizarTarefa
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** "2026-10-27T09:00:00.000Z" → "2026-10-27": o save só aceita a data (ISO dá NumberFormatException). */
+function dataDaTarefa(v: unknown): string | undefined {
+  const m = typeof v === 'string' ? /^\d{4}-\d{2}-\d{2}/.exec(v) : null;
+  return m ? m[0] : undefined;
+}
+
+/** Kanban atual da tarefa (getTaskWithComments) no formato do save. */
+function kanbanAtualDaTarefa(current: { kanbanDetails?: { id?: unknown; columnId?: unknown } }): Record<string, unknown> {
+  const k = current?.kanbanDetails;
+  if (!k?.id || !k.columnId) return {};
+  return camposKanban({ quadroId: String(k.id), quadroNome: '', colunaId: String(k.columnId), colunaNome: '' });
+}
+
 export async function atualizarTarefa(
   id: string,
   input: AtualizarTarefaInput,
 ): Promise<ServiceResponse<Tarefa>> {
+  try {
+    validarPedidoKanban(input.kanban);
+  } catch (err) {
+    return { ok: false, error: { message: (err as Error).message.replace(/^VALIDATION_ERROR:\s*/, ''), code: 'VALIDATION_ERROR', retryable: false } };
+  }
   try {
     const tarefa = await withBrowserContext(async (page) => {
       await navigateTo(page, WORKSPACE_PAGE_PATH);
@@ -378,6 +424,13 @@ export async function atualizarTarefa(
       else if (input.status === 'pendente') done = false;
 
       const overrideCasoId = (input as { casoId?: string }).casoId;
+      const dueDate = dataDaTarefa(input.prazo) ?? dataDaTarefa(current?.dueDate);
+
+      // A UI do Astrea só põe no quadro tarefa com data (useKanbanFormUpdater).
+      if (input.kanban && !dueDate) throw new Error('VALIDATION_ERROR: kanban exige prazo na tarefa');
+      const kanban = input.kanban === undefined ? undefined : await resolverDestinoKanban(page, 'tarefa', input.kanban);
+      const camposDoKanban =
+        kanban === undefined ? kanbanAtualDaTarefa(current) : kanban ? camposKanban(kanban) : { kanbanDetails: null };
 
       const updatedPayload = {
         taskInfoDTO: {
@@ -391,11 +444,10 @@ export async function atualizarTarefa(
           ownerId: String(currentOwnerId),
           done,
           priority: input.prioridade !== undefined ? input.prioridade : (current?.priority ?? 0),
-          ...(input.prazo !== undefined
-            ? { dueDate: input.prazo }
-            : current?.dueDate
-              ? { dueDate: current.dueDate }
-              : {}),
+          ...(dueDate ? { dueDate } : {}),
+          // Sem reenviar, o save perderia etiquetas e Kanban da tarefa.
+          ...(Array.isArray(current?.tagIds) ? { tagIds: current.tagIds.map(String) } : {}),
+          ...camposDoKanban,
           ...(overrideCasoId
             ? { caseId: overrideCasoId }
             : currentCaseId
@@ -429,16 +481,20 @@ export async function atualizarTarefa(
         ...(res && typeof res === 'object' ? res : {}),
       };
 
-      return mapGcpTaskToTarefa(updatedTask);
+      return { ...mapGcpTaskToTarefa(updatedTask), ...(kanban !== undefined ? { kanban } : {}) };
     });
 
     return { ok: true, data: tarefa };
   } catch (err) {
     logger.error({ err, id }, 'Erro em atualizarTarefa');
+    const message = err instanceof Error ? err.message : 'Erro desconhecido';
+    if (message.startsWith('VALIDATION_ERROR')) {
+      return { ok: false, error: { message: message.replace(/^VALIDATION_ERROR:\s*/, ''), code: 'VALIDATION_ERROR', retryable: false } };
+    }
     return {
       ok: false,
       error: {
-        message: err instanceof Error ? err.message : 'Erro desconhecido',
+        message,
         code: 'API_ERROR',
         retryable: isRetryablePlaywrightError(err),
       },

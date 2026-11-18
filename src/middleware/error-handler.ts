@@ -44,7 +44,7 @@ export function errorHandler(
       success: false,
       error: 'Parâmetros inválidos.',
       code: 'VALIDATION_ERROR',
-      details: err.errors.map((e) => ({ field: e.path.join('.'), message: e.message })),
+      details: err.issues.map((e) => ({ field: e.path.join('.'), message: e.message })),
     };
     res.status(400).json(error);
     return;

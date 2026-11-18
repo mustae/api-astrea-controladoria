@@ -68,6 +68,8 @@ export type {
   PrioridadeKanban,
   FiltrosAtividadeKanban,
   MoverAtividadeInput,
+  PedidoKanban,
+  KanbanAplicado,
 } from './kanban.js';
 export type {
   EventoAgenda,

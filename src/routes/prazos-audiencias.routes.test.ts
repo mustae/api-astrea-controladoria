@@ -30,6 +30,19 @@ describe('prazos', () => {
     expect(svc.criarPrazo).toHaveBeenCalledWith({ processoId: '9', titulo: 't', data: '2026-10-22', etiquetasIds: ['5'] });
   });
 
+  it('kanban { quadro, coluna } ou false chega ao service; formato inválido → 400', async () => {
+    vi.mocked(svc.criarPrazo).mockResolvedValue(ok({ id: '1', processoId: '9', titulo: 't', data: '2026-10-22', kanban: null }));
+    const kanban = { quadro: 'Kanban Padrão', coluna: 'A Fazer' };
+    const r = await request(app).post('/api/casos/9/prazos').send({ titulo: 't', data: '2026-10-22', kanban });
+    expect(r.status).toBe(201);
+    expect(svc.criarPrazo).toHaveBeenLastCalledWith(expect.objectContaining({ kanban }));
+    const r2 = await request(app).post('/api/casos/9/prazos').send({ titulo: 't', data: '2026-10-22', kanban: false });
+    expect(r2.status).toBe(201);
+    expect(svc.criarPrazo).toHaveBeenLastCalledWith(expect.objectContaining({ kanban: false }));
+    const r3 = await request(app).post('/api/casos/9/prazos').send({ titulo: 't', data: '2026-10-22', kanban: { quadroId: '1' } });
+    expect(r3.status).toBe(400);
+  });
+
   it('data inválida → 400', async () => {
     const r = await request(app).post('/api/casos/9/prazos').send({ titulo: 't', data: '22/10/2026' });
     expect(r.status).toBe(400);
@@ -52,6 +65,16 @@ describe('prazos', () => {
     expect(r.status).toBe(200);
     expect(svc.editarPrazo).toHaveBeenCalledWith('1', { data: '2026-10-23' });
   });
+
+  it('PATCH /api/prazos/:id aceita kanban (troca de quadro ou false); formato inválido → 400', async () => {
+    vi.mocked(svc.editarPrazo).mockResolvedValue(ok({ id: '1', alterados: ['kanban'], kanban: null }));
+    const r = await request(app).patch('/api/prazos/1').send({ kanban: { quadro: 'AUDIENCIAS & PERICIAS' } });
+    expect(r.status).toBe(200);
+    expect(svc.editarPrazo).toHaveBeenLastCalledWith('1', { kanban: { quadro: 'AUDIENCIAS & PERICIAS' } });
+    expect((await request(app).patch('/api/prazos/1').send({ kanban: false })).status).toBe(200);
+    expect(svc.editarPrazo).toHaveBeenLastCalledWith('1', { kanban: false });
+    expect((await request(app).patch('/api/prazos/1').send({ kanban: { quadroId: '1' } })).status).toBe(400);
+  });
 });
 
 describe('audiências', () => {
@@ -63,6 +86,16 @@ describe('audiências', () => {
       .post('/api/casos/9/audiencias')
       .send({ titulo: 'Conciliação', data: '2026-10-22', horaInicio: '13:00', forum: 'Toledo' });
     expect(r.status).toBe(201);
+  });
+
+  it('audiência aceita kanban', async () => {
+    vi.mocked(svc.criarAudiencia).mockResolvedValueOnce(
+      ok({ id: '7', processoId: '9', data: '2026-10-22', horaInicio: '13:00', horaFim: '13:30' }),
+    );
+    const kanban = { quadro: 'AUDIENCIAS & PERICIAS' };
+    const r = await request(app).post('/api/casos/9/audiencias').send({ titulo: 'x', data: '2026-10-22', horaInicio: '13:00', kanban });
+    expect(r.status).toBe(201);
+    expect(svc.criarAudiencia).toHaveBeenCalledWith(expect.objectContaining({ kanban }));
   });
 
   it('CONFLICT → 409 com details', async () => {
@@ -81,6 +114,9 @@ describe('audiências', () => {
     expect((await request(app).post('/api/casos/9/audiencias').send({ titulo: 'x', data: '2026-10-22', horaInicio: '25:00' })).status).toBe(400);
     vi.mocked(svc.editarAudiencia).mockResolvedValueOnce(ok({ id: '7', alterados: ['horaInicio'] }));
     expect((await request(app).patch('/api/audiencias/7').send({ horaInicio: '14:00' })).status).toBe(200);
+    vi.mocked(svc.editarAudiencia).mockResolvedValueOnce(ok({ id: '7', alterados: ['kanban'], kanban: null }));
+    expect((await request(app).patch('/api/audiencias/7').send({ kanban: false })).status).toBe(200);
+    expect(svc.editarAudiencia).toHaveBeenLastCalledWith('7', { kanban: false });
     vi.mocked(svc.excluirAudiencia).mockResolvedValueOnce(ok({ id: '7', removido: true as const }));
     expect((await request(app).delete('/api/audiencias/7')).status).toBe(200);
   });

@@ -1,7 +1,7 @@
 # Kanban — Discovery dos endpoints internos do Astrea
 
 Sessão de discovery feita via Chrome DevTools MCP em **30/04/2026** logado como
-`admin@alvesbernabe.com` (tenant `rafaelvictoralves28`, id `6692712561442816`).
+a conta de automação de outro escritório.
 
 A nova feature **Gestão Kanban** ("NOVO" no menu lateral) usa três endpoints
 REST sob `https://app.astrea.net.br/api/v2/kanbans`. Todos exigem `Authorization:

@@ -911,7 +911,7 @@ export async function mesclarClientes(
           `API_ERROR: ${response.errorMessage || 'Astrea retornou NOT_OK ao mesclar contatos'}`,
         );
       }
-    });
+    }, { escrita: true });
 
     return await buscarCliente(idPrincipal);
   } catch (err) {
@@ -993,7 +993,7 @@ export function telefonesIguais(a?: string, b?: string): boolean {
 
 export async function criarCliente(input: CriarClienteInput): Promise<ServiceResponse<Cliente>> {
   try {
-    const contactId = await withBrowserContext((page) => criarContatoNaPagina(page, input));
+    const contactId = await withBrowserContext((page) => criarContatoNaPagina(page, input), { escrita: true });
 
     return await buscarCliente(contactId);
   } catch (err) {

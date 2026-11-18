@@ -8,6 +8,7 @@ import {
   comentarTarefa,
 } from '../services/tarefas.service.js';
 import type { ApiResponse, ApiError } from '../types/index.js';
+import { destinoKanbanSchema } from './query-helpers.js';
 
 const router = Router();
 
@@ -38,11 +39,12 @@ const querySchema = z.object({
 const criarTarefaSchema = z.object({
   titulo: z.string(),
   casoId: z.string().optional(),
-  responsavelId: z.string(),
+  responsavelId: z.string().optional(),
   listaId: z.string().optional(),
   prazo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   prioridade: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
   etiquetasIds: z.array(z.string().regex(/^\d+$/)).max(20).optional(),
+  kanban: destinoKanbanSchema.optional(),
 });
 
 const atualizarTarefaSchema = z.object({
@@ -51,6 +53,7 @@ const atualizarTarefaSchema = z.object({
   prazo: z.string().optional(),
   responsavelId: z.string().optional(),
   prioridade: z.number().optional(),
+  kanban: destinoKanbanSchema.optional(),
 });
 
 const comentarTarefaSchema = z.object({

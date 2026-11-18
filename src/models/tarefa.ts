@@ -1,3 +1,5 @@
+import type { KanbanAplicado, PedidoKanban } from './kanban.js';
+
 export interface Tarefa {
   id: string;
   /** Conteudo/descricao da tarefa (campo "description" no GCP Endpoints). */
@@ -18,6 +20,8 @@ export interface Tarefa {
   urlCaso?: string;
   listaId?: string;
   createdAt?: string;
+  /** Só na criação: quadro/coluna do Kanban em que a tarefa entrou (null = fora). */
+  kanban?: KanbanAplicado | null;
 }
 
 export interface CriarTarefaInput {
@@ -25,8 +29,11 @@ export interface CriarTarefaInput {
   titulo: string;
   /** ID do caso/processo associado (caseId no TaskInfoDTO do Astrea). */
   casoId?: string;
-  /** ID do usuario responsavel. Obrigatorio para criacao via GCP Endpoints. */
-  responsavelId: string;
+  /**
+   * ID do usuario responsavel. Omitido: advogado da área pela etiqueta da tarefa/processo
+   * (RESPONSAVEL_POR_ETIQUETA), senão o usuário da integração.
+   */
+  responsavelId?: string;
   /** ID da lista de tarefas destino. Usa a lista padrao se omitido. */
   listaId?: string;
   /** Data de vencimento no formato YYYY-MM-DD. */
@@ -35,6 +42,8 @@ export interface CriarTarefaInput {
   prioridade?: number;
   /** IDs de etiquetas (`listar_etiquetas`, uso "tarefas") → `taskInfoDTO.tagIds`. */
   etiquetasIds?: string[];
+  /** Quadro Kanban (ver PedidoKanban). Tarefa só entra no Kanban com `prazo` (regra do Astrea). */
+  kanban?: PedidoKanban;
 }
 
 export interface AtualizarTarefaInput {
@@ -43,6 +52,8 @@ export interface AtualizarTarefaInput {
   prazo?: string;
   responsavelId?: string;
   prioridade?: number;
+  /** Troca o quadro Kanban (`{ quadro, coluna? }`) ou tira do Kanban (`false`). Exige prazo. */
+  kanban?: PedidoKanban;
 }
 
 export interface Comentario {

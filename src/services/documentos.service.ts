@@ -109,7 +109,7 @@ export async function adicionarDocumentoLink(
 
       logger.info({ documentId, clienteId: input.clienteId }, 'Documento Link criado com sucesso.');
       return doc;
-    });
+    }, { escrita: true });
 
     return { ok: true, data };
   } catch (err) {
